@@ -395,3 +395,36 @@ body { font-size: 15px; }
 .thumbnail-inputs input { display:block; max-width:100%; margin-top:4px; }
 #thumbnailPreview { display:block; width:min(100%, 360px); height:auto; margin:12px 0; }
 .clip-step-footer { align-items:center; gap:8px; justify-content:space-between; }
+
+.r2-section {
+  margin-block: 1rem;
+  padding: clamp(.85rem, 2vw, 1.4rem);
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.r2-section h3, .r2-section h4 { margin-block: .25rem .65rem; }
+.r2-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; margin-block: .65rem; }
+.r2-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+.r2-section label { display: grid; gap: .3rem; min-width: 0; }
+.r2-section label.check-item { display: flex; }
+.r2-section input, .r2-section textarea, .r2-section select { min-width: 0; max-width: 100%; }
+.r2-section select, .r2-section input:not([type=checkbox]), .r2-section textarea {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  padding: .35rem .55rem;
+  background: var(--bg, #fff);
+  color: inherit;
+  font-size: 1rem;
+}
+.r2-result { border-top: 1px solid var(--stroke); padding-block: .6rem; }
+@media (max-width: 600px) {
+  .r2-section .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.sidebar { overflow-y: auto; }
+.r2-section form .form-grid { row-gap: .75rem; }

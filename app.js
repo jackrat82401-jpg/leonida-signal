@@ -11,28 +11,67 @@ const nowISO = ()=>new Date().toISOString();
 const makeID = ()=>globalThis.crypto?.randomUUID?.()||'item_'+Date.now()+'_'+Math.random().toString(36).slice(2);
 const safeUrl = u=>{try{let a=new URL(u);return ['https:','http:'].includes(a.protocol)?a.href:''}catch{return ''}};
 const ago = when=>{if(!when)return 'Unknown date';let delta=Math.max(0,Date.now()-new Date(when).getTime())/3600000;if(!Number.isFinite(delta))return 'Unknown date';return delta<1?Math.round(delta*60)+'m ago':delta<24?Math.round(delta)+'h ago':Math.floor(delta/24)+'d ago'};
-const fmtDate = s=>s?new Date(s).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}):'—';
+const fmtDate = s=>Number.isFinite(Date.parse(s))?new Date(s).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}):'—';
 const duration = sec=>!sec?'—':`${Math.floor(sec/60)}:${String(Math.round(sec%60)).padStart(2,'0')}`;
 const statusTitles={discovered:'Inbox',shortlisted:'Shortlisted',rights:'Rights review',approved:'Cleared',editing:'Editing',review:'Final review',scheduled:'Ready',published:'Published',archived:'Archived'};
 const stageOrder=['discovered','shortlisted','rights','approved','editing','review','scheduled','published'];
-const defaultState=()=>({version:1,streamers:[{id:'seed_summit1g',handle:'summit1g',name:'Summit1g',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_xqc',handle:'xqc',name:'xQc',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_caseoh_',handle:'caseoh_',name:'CaseOh',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_kaicenat',handle:'kaicenat',name:'Kai Cenat',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_jynxzi',handle:'jynxzi',name:'Jynxzi',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_lord_kebun',handle:'lord_kebun',name:'Lord Kebun',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_esfandtv',handle:'esfandtv',name:'EsfandTV',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'}],clips:[],activity:[],settings:{scanWindow:24,autoScan:false,scanInterval:30,maxClips:60},lastScan:null});
+const defaultState=()=>({version:1,performance:[],streamers:[{id:'seed_summit1g',handle:'summit1g',name:'Summit1g',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_xqc',handle:'xqc',name:'xQc',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_caseoh_',handle:'caseoh_',name:'CaseOh',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_kaicenat',handle:'kaicenat',name:'Kai Cenat',platform:'Twitch',priority:3,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_jynxzi',handle:'jynxzi',name:'Jynxzi',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_lord_kebun',handle:'lord_kebun',name:'Lord Kebun',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'},{id:'seed_esfandtv',handle:'esfandtv',name:'EsfandTV',platform:'Twitch',priority:2,notes:'Watchlist candidate; GTA VI stream not confirmed. Reuse authorization not granted.'}],clips:[],activity:[],settings:{scanWindow:24,autoScan:false,scanInterval:30,maxClips:60},lastScan:null});
 let state=defaultState(),page='overview',filterText='',filterStatus='all',sortMode='score',clipSelected=null,networkMode=false,health={configured:false},busy=false,saveChain=Promise.resolve(),lastPersisted='',feedMeta={status:'loading',generatedAt:null},lastFeedRefresh=null;
 
 function clipRights(c){return c.rights||{status:'unknown',evidence:'',scope:'',note:'',confirmedAt:''}}
 function isCleared(c){const r=clipRights(c);return (r.status==='granted'||r.status==='own'||r.status==='other_basis')&&(r.status==='own'||(r.evidence||'').trim().length>3)&&(r.status!=='granted'||(r.scope||'').trim().length>0)&&(r.status!=='other_basis'||(r.note||'').trim().length>5)}
-function scoreParts(c){let t=c.createdAt||c.discoveredAt?new Date(c.createdAt||c.discoveredAt).getTime():0;let hours=t?Math.max(.2,(Date.now()-t)/3600000):1000000;let v=Number(c.views||0);let rate=v/hours;
-  let velocity=Math.min(35,Math.round(35*Math.log10(1+rate)/3.5));
-  if(c.priorViews!=null&&c.priorCheckedAt){const age=(Date.now()-new Date(c.priorCheckedAt).getTime())/3600000;if(age>.01&&v>=c.priorViews){rate=(v-c.priorViews)/age;velocity=Math.min(35,Math.round(35*Math.log10(1+rate)/3.5))}}
-  const traction=Math.min(20,Math.round(20*Math.log10(1+v)/5));
-  const fresh=Math.max(0,Math.round(20*Math.exp(-hours/42)));
-  const streamer=state.streamers.find(s=>s.handle.toLowerCase().replace(/[^a-z0-9]/g,'')===String(c.streamer||'').toLowerCase().replace(/[^a-z0-9]/g,''));
-  const priority=streamer?(streamer.priority===3?10:streamer.priority===2?7:4):0;
-  const editorial=Math.min(15,Math.max(0,Math.round(Number(c.rating||0)*3)));
+function clipKey(c) {
+  const slug=twitchClipSlug(c.url);
+  if(slug)return 'twitch:'+slug;
+  try {
+    const url=new URL(c.url);
+    url.hash='';
+    for(const name of [...url.searchParams.keys()]){
+      if(/^utm_/i.test(name))url.searchParams.delete(name);
+    }
+    url.searchParams.sort();
+    return url.href;
+  }catch{return '';}
+}
+function observedGrowth(c) {
+  const hours=(Date.parse(c.lastCheckedAt)-Date.parse(c.priorCheckedAt))/3600000;
+  return hours>0&&c.priorViews!=null&&c.views!=null&&c.views>=c.priorViews
+    ? (c.views-c.priorViews)/hours : null;
+}
+function scoreParts(c){
+  const age=(Date.now()-Date.parse(c.createdAt))/3600000;
+  const views=Math.max(0,Number(c.views)||0);
+  const rate=observedGrowth(c);
+  const estimate=Number.isFinite(age)&&age>0 ? views/Math.max(.2,age) : 0;
+  const velocity=Math.min(35,Math.round(10*Math.log10(1+(rate??estimate))));
+  const traction=Math.min(20,Math.round(4*Math.log10(1+views)));
+  const fresh=Number.isFinite(age)&&age>=0 ? Math.round(20*Math.exp(-age/42)) : 0;
+  const normalize=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const creator=normalize(c.broadcasterLogin||c.streamer);
+  const streamer=state.streamers.find(s=>creator&&[s.handle,s.name].some(value=>normalize(value)===creator));
+  const priority=streamer ? ({3:10,2:7,1:4}[streamer.priority]||0) : 0;
+  const topic=clipTopic(c);
+  const rating=Number(c.rating)||0;
+  const editorial=rating ? Math.min(15,Math.max(0,Math.round(rating*3))) : ({Comparison:12,Reaction:9,Payoff:9}[topic]||3);
   return {velocity,traction,fresh,priority,editorial,total:velocity+traction+fresh+priority+editorial,rate};
+}
+function clipTopic(c){
+  const title=c.title||'';
+  if(/compar|framegen|fps| on vs |before and after/i.test(title))return 'Comparison';
+  if(/first|reaction|thoughts|review/i.test(title))return 'Reaction';
+  if(/surviv|fail|called it|crash| plan/i.test(title))return 'Payoff';
+  return 'Other';
 }
 const score=c=>scoreParts(c).total;
 function logActivity(action,detail){state.activity.unshift({id:makeID(),action,detail,when:nowISO()});state.activity=state.activity.slice(0,90)}
-function normalizeState(obj){let empty=defaultState();return {...empty,...obj,clips:Array.isArray(obj?.clips)?obj.clips:[],streamers:Array.isArray(obj?.streamers)?obj.streamers:empty.streamers,activity:Array.isArray(obj?.activity)?obj.activity:[],settings:{...empty.settings,...(obj?.settings||{})}}}
+const extraCreators=[
+  ['sodapoppin','Sodapoppin'],['lirik','LIRIK'],['northernlion','Northernlion'],
+  ['cyr','Cyr'],['nmplol','Nmplol'],['extraemily','ExtraEmily']
+];
+function watchlistSuggestions(){
+  return extraCreators.filter(([handle])=>!state.streamers.some(s=>s.handle.toLowerCase()===handle));
+}
+function normalizeState(obj){let empty=defaultState();return {...empty,...obj,performance:Array.isArray(obj?.performance)?obj.performance:[],clips:Array.isArray(obj?.clips)?obj.clips:[],streamers:Array.isArray(obj?.streamers)?obj.streamers:empty.streamers,activity:Array.isArray(obj?.activity)?obj.activity:[],settings:{...empty.settings,...(obj?.settings||{})}}}
 function toast(message,error=false){const el=document.createElement('div');el.className='toast'+(error?' error':'');el.textContent=message;$('#toastStack').append(el);setTimeout(()=>el.remove(),4400)}
 async function load(){
   try{state=normalizeState(JSON.parse(localStorage.getItem('leonida-signal-v1')||'{}'))}
@@ -46,14 +85,16 @@ function persist(){
   try{localStorage.setItem('leonida-signal-v1',snap);lastPersisted=snap;const label=$('#draftSaveState');if(label)label.textContent='Saved on this device'}
   catch{const label=$('#draftSaveState');if(label)label.textContent='Save failed';toast('Local storage unavailable. Export a JSON backup.',true)}
 }
-function normalizePublicClip(c){
-  if(!c||!c.id||!safeUrl(c.url))return null;
+function normalizePublicClip(c,generatedAt){
+  if(!c||!c.id||twitchClipSlug(c.url)!==String(c.id))return null;
   return {id:'twitch_'+String(c.id),sourceId:String(c.id),url:safeUrl(c.url),title:String(c.title||'Untitled Twitch clip'),
     streamer:String(c.broadcaster_name||'Unknown'),platform:'Twitch',views:Math.max(0,Number(c.view_count||0)),
     duration:Math.max(0,Number(c.duration||0)),createdAt:c.created_at||'',discoveredAt:c.created_at||'',
     thumbnail:safeUrl(c.thumbnail_url||''),status:'discovered',rating:0,hook:'',valueAdd:'',editor:'',postedUrl:'',checks:{},
     rights:{status:'unknown',evidence:'',scope:'',note:'',confirmedAt:''},sourceType:c.starter?'curated-starter':'twitch-api',
-    clipper:String(c.creator_name||''),lastCheckedAt:nowISO()}
+    clipper:String(c.creator_name||''),broadcasterId:c.broadcaster_id||'',broadcasterLogin:c.broadcaster_login||'',
+    vodId:c.video_id||'',vodOffset:c.vod_offset??null,discoverySources:Array.isArray(c.discovery_sources)?c.discovery_sources:[],
+    lastCheckedAt:c.starter?'':generatedAt||''}
 }
 async function refreshFeed(silent=false){
   if(busy)return;
@@ -63,20 +104,35 @@ async function refreshFeed(silent=false){
     if(!res.ok)throw Error('HTTP '+res.status);
     const data=await res.json();
     if(!Array.isArray(data.clips))throw Error('Feed format invalid');
-    const incoming=data.clips.map(normalizePublicClip).filter(Boolean);
+    const incoming=data.clips.map(c=>normalizePublicClip(c,data.generatedAt)).sort((a,b)=>(b?.views||0)-(a?.views||0)).filter(Boolean);
     let added=0,updated=0;
+    const seen=new Set();
     for(const clip of incoming){
-      const existing=state.clips.find(old=>old.sourceId===clip.sourceId||old.url===clip.url);
+      const key=clipKey(clip);
+      if(seen.has(key))continue;
+      seen.add(key);
+      const existing=state.clips.find(old=>old.sourceId===clip.sourceId||clipKey(old)===key);
       if(existing){
-        if(existing.views!==clip.views){existing.priorViews=existing.views;existing.priorCheckedAt=existing.lastCheckedAt||nowISO()}
-        for(const key of ['views','title','duration','thumbnail','lastCheckedAt']) existing[key]=clip[key];
-        if(clip.createdAt)existing.createdAt=clip.createdAt;
+        const observed=Date.parse(clip.lastCheckedAt);
+        const previous=Date.parse(existing.lastCheckedAt);
+        if(Number.isFinite(observed)&&Number.isFinite(previous)&&observed>previous&&existing.sourceType==='twitch-api'&&clip.views>=existing.views){
+          existing.priorViews=existing.views;
+          existing.priorCheckedAt=existing.lastCheckedAt;
+        }else if(Number.isFinite(observed)&&observed>previous&&clip.views<existing.views){
+          delete existing.priorViews;
+          delete existing.priorCheckedAt;
+        }
+        if(Number.isFinite(observed)&&(!Number.isFinite(previous)||observed>=previous||existing.sourceType!=='twitch-api')){
+          for(const key of ['views','title','duration','thumbnail','lastCheckedAt','sourceType','broadcasterId','broadcasterLogin','vodId','vodOffset','clipper','discoverySources','sourceId'])existing[key]=clip[key];
+          existing.streamer=clip.streamer;
+          if(clip.createdAt)existing.createdAt=clip.createdAt;
+        }
         // NEVER overwrite rights, statuses, editorial notes or publication history.
         updated++;
       }else{state.clips.push(clip);added++}
     }
     feedMeta={status:String(data.status||'unknown'),generatedAt:data.generatedAt||null,
-      message:String(data.message||''),count:incoming.length};
+      message:String(data.message||''),count:seen.size};
     lastFeedRefresh=nowISO();
     if(data.generatedAt)state.lastScan=data.generatedAt;
     health.configured=feedMeta.status==='ok';
@@ -96,13 +152,13 @@ function updateConnection(){
   $('#statusSub').textContent=live?`Updated ${ago(feedMeta.generatedAt)}`:'Personal edits stay in this browser';
   $('#connectionPulse').classList.toggle('connected',live);
 }
-function render(){const labels={overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings})[page]();}
+function render(){const labels={overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings',record:'Ready to Record',analytics:'Performance'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings,record:renderRecord,analytics:renderAnalytics})[page]();}
 function pageTop(kicker,title,sub,buttons=''){return `<div class="page-top"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${sub}</p></div>${buttons?`<div class="page-actions">${buttons}</div>`:''}</div>`}
 function btn(action,title,variant='ghost',extra=''){return `<button class="btn btn-${variant}" data-action="${action}" ${extra}>${title}</button>`}
 function empty(symbol,title,desc,action='',label=''){return `<div class="empty"><div class="empty-symbol">${symbol}</div><strong>${title}</strong><p>${desc}</p>${action?btn(action,label,'soft'):''}</div>`}
 function tag(value){const label=statusTitles[value]||value||'Unknown';let t=['approved','published','scheduled'].includes(value)?'accent':value==='rights'?'warn':value==='editing'?'teal':value==='review'?'rose':'';return `<span class="tag ${t}">${esc(label)}</span>`}
 function rightsTag(c){const s=clipRights(c).status;const txt={unknown:'Unverified',requested:'Requested',granted:'Granted',denied:'Denied',own:'Owned',other_basis:'Other basis'}[s]||'Unverified';return `<span class="tag ${isCleared(c)?'accent':s==='denied'?'red':'warn'}">${txt}</span>`}
-function sortedClips(){let arr=state.clips.slice();if(filterText){let s=filterText.toLowerCase();arr=arr.filter(c=>(c.title+' '+c.streamer+' '+c.platform).toLowerCase().includes(s))}if(filterStatus!=='all')arr=arr.filter(c=>c.status===filterStatus);arr.sort((a,b)=>sortMode==='views'?b.views-a.views:sortMode==='newest'?new Date(b.createdAt)-new Date(a.createdAt):score(b)-score(a));return arr}
+function sortedClips(){let arr=state.clips.slice();if(filterText){let s=filterText.toLowerCase();arr=arr.filter(c=>(c.title+' '+c.streamer+' '+c.platform).toLowerCase().includes(s))}if(filterStatus!=='all')arr=arr.filter(c=>c.status===filterStatus);arr.sort((a,b)=>sortMode==='views'?b.views-a.views:sortMode==='newest'?(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0):score(b)-score(a));return arr}
 function clipCard(c){const img=safeUrl(c.thumbnail);return `<article class="clip-card" data-open-clip="${esc(c.id)}" tabindex="0" role="button"><div class="clip-thumb ${img?'has-image':''}" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="thumb-fallback">VI</div><span class="clip-platform tag">${esc(c.platform||'Twitch')}</span><span class="clip-duration">${duration(c.duration)}</span></div><div class="clip-info"><h3>${esc(c.title)}</h3><div class="clip-byline"><span>@${esc(c.streamer||'unknown')}</span><span>${ago(c.createdAt)}</span></div><div class="clip-card-bottom"><span class="score-pill">${score(c)}<small>/ 100 SIGNAL</small></span>${rightsTag(c)}</div></div></article>`}
 function productionQueue() {
   const active = state.clips.filter(c => !['published', 'archived'].includes(c.status) && (c.status!=='discovered'||c.production?.brief||c.production?.script));
@@ -111,10 +167,11 @@ function productionQueue() {
 }
 
 const productionFields = [
+  ['filmingNotes','Filming notes','Mark source timecodes, framing, and delivery.'],
   ['brief', 'Factual brief', '5–7 sentences. Record what you can verify and mark what is uncertain.'],
-  ['angle1', 'Editorial angle 1', 'Three sentences on a distinct story you could tell.'],
-  ['angle2', 'Editorial angle 2', 'Three sentences on a different way into the clip.'],
-  ['angle3', 'Editorial angle 3', 'Three sentences on a third approach.'],
+  ['angle1', 'Comedy', 'Three sentences on a distinct story you could tell.'],
+  ['angle2', 'Debate', 'Three sentences on a different way into the clip.'],
+  ['angle3', 'Philosophy', 'Three sentences on a third approach.'],
   ['permissionChecks', 'Permission checks to verify', 'List the approvals to check before reuse.'],
   ['point', 'Spinoza’s Point', 'Three sentences. Start with the laugh and leave the viewer with something to think about.'],
   ['captionOptions', 'Caption options', 'Draft several publish captions, one per line.'],
@@ -154,12 +211,12 @@ function parseResearch(raw, clip) {
 
 function researchPrompt(c) {
   return [
-    'Prepare a Spinoza production brief for this Twitch clip.',
+    'Prepare a Spinoza production brief for this '+c.platform+' clip.',
     'Clip: ' + c.title,
     'Creator: ' + c.streamer,
     'Original source: ' + c.url,
     'Write a 5–7 sentence factual brief. Verify against the original clip and available context. Flag unsupported details.',
-    'Give three distinct editorial angles, three sentences each, and a three-sentence Spinoza’s Point. Use accessible humor and end with a thought the audience can explore for themselves.',
+    'Give comedy, debate, and philosophy angles in that order, three sentences each, and a three-sentence Spinoza’s Point. Use accessible humor and end with a thought the audience can explore for themselves.',
     'List the permissions and attribution to verify before reuse, including any third-party audio or footage and the intended platforms.',
     'If you cannot watch or verify the clip, say so explicitly. Separate facts, source claims and editorial hypotheses.',
     'Return only valid JSON so Leonida Signal can import it. Each field must be a string. Use these exact keys and preserve the clipId exactly:',
@@ -186,7 +243,7 @@ function renderOverview() {
 function renderDiscovery(){return `${pageTop('01 / THE RADAR','Discovery','Sort fresh Twitch clips by early traction and editorial signal.',`${btn('add-clip','+ Add clip','ghost')}${btn('scan','↻ Refresh feed','accent')}`)}
   <div class="filterbar"><input class="search-input" id="clipSearch" type="search" placeholder="Search clip title or streamer..." value="${esc(filterText)}"/><select class="select-input" id="statusFilter"><option value="all">All statuses</option>${Object.entries(statusTitles).map(([k,v])=>`<option value="${k}" ${filterStatus===k?'selected':''}>${v}</option>`).join('')}</select><select class="select-input" id="sortFilter"><option value="score" ${sortMode==='score'?'selected':''}>Highest signal</option><option value="views" ${sortMode==='views'?'selected':''}>Most views</option><option value="newest" ${sortMode==='newest'?'selected':''}>Newest</option></select><span class="count">${sortedClips().length} results</span></div>
   ${state.clips.length?`<div class="clips" id="clipsContainer">${sortedClips().map(clipCard).join('')}</div>`: `<section class="panel">${empty('◎','Your discovery feed starts here','The hosted feed is awaiting Twitch setup. You can also add links manually.','add-clip','+ Add clip manually')}</section>`}`}
-function renderWatchlist(){return `${pageTop('02 / PEOPLE TO WATCH','Streamer watchlist','Track creator channels, priority and partnerships. Adding a creator does not mean they are confirmed to stream GTA VI.',btn('add-streamer','+ Add streamer','accent'))}
+function renderWatchlist(){return (watchlistSuggestions().length?`<div class="r2-actions">${btn('add-suggested-creators','Add suggested creators','soft')}</div>`:'')+`${pageTop('02 / PEOPLE TO WATCH','Streamer watchlist','Track creator channels, priority and partnerships. Adding a creator does not mean they are confirmed to stream GTA VI.',btn('add-streamer','+ Add streamer','accent'))}
   <div class="info-ribbon cool">◈ &nbsp; The scheduled scanner reads config/watchlist.json from your GitHub repository. Changes you make to this private browser list do not change the scheduled cloud scanner. Rights are recorded per clip.</div>
   <div class="table-scroll"><table class="data-table"><thead><tr><th>Creator / Channel</th><th>Platform</th><th>Priority</th><th>Contact / partnership notes</th><th>Actions</th></tr></thead><tbody>${state.streamers.length?state.streamers.map(s=>`<tr><td><strong>@${esc(s.handle)}</strong><div class="table-muted">${esc(s.name||'No display name')}</div></td><td>${esc(s.platform||'Twitch')}</td><td><span class="priority-pill p${Number(s.priority||1)}">${s.priority===3?'Priority 1 · Top':s.priority===2?'Priority 2 · Medium':'Priority 3 · Low'}</span></td><td>${esc(short(s.notes||'No notes yet',75))}</td><td><button class="table-action" data-edit-streamer="${esc(s.id)}">Edit</button> <button class="table-action" data-open-streamer="${esc(s.id)}">Visit ↗</button></td></tr>`).join(''):`<tr><td colspan="5">${empty('♙','No creators tracked yet','Add Twitch streamer handles to scan their clips and maintain a creator outreach list.','add-streamer','+ Add streamer')}</td></tr>`}</tbody></table></div>`}
 function renderRights(){const pending=state.clips.filter(c=>!isCleared(c)&&!['archived','published'].includes(c.status));const cleared=state.clips.filter(isCleared);const denied=state.clips.filter(c=>clipRights(c).status==='denied');return `${pageTop('03 / COMPLIANCE','Rights desk','No direct publishing from unverified clips. Record authorization, permitted use and supporting evidence.',btn('add-clip','+ Add a source','ghost'))}
@@ -204,10 +261,10 @@ function closeModal(){$('#modalBackdrop').classList.remove('on');$('#modalConten
 function modalHeader(kicker,title){return `<div class="modal-head"><div><div class="eyebrow">${kicker}</div><h2>${title}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Close">✕</button></div>`}
 function modalAddClip(){showModal(`${modalHeader('QUICK INTAKE','Add a source clip')}<form id="clipForm"><div class="modal-body"><div class="field"><label>Original clip URL *</label><input name="url" type="url" placeholder="https://clips.twitch.tv/..." required maxlength="800"/></div><div class="field"><label>Clip title *</label><input name="title" placeholder="What happens in the clip?" required maxlength="220"/></div><div class="form-grid"><div class="field"><label>Streamer handle *</label><input name="streamer" required placeholder="Creator username" maxlength="90"/></div><div class="field"><label>Source platform</label><select name="platform"><option>Twitch</option><option>YouTube</option><option>Kick</option><option>Other</option></select></div><div class="field"><label>Current views</label><input name="views" type="number" min="0" max="999999999" value="0"/></div><div class="field"><label>Duration (seconds)</label><input name="duration" type="number" min="0" max="36000" value="30"/></div></div><div class="field"><label>Clip timestamp (optional)</label><input name="createdAt" type="datetime-local" /></div><p class="help-copy">New clips enter Inbox with rights unverified. You can add the clip to the queue, record permission, and track edit progress later.</p></div><div class="modal-foot"><button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">Add to discovery</button></div></form>`)}
 function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RADAR',isEdit?'Edit streamer':'Add streamer')}<form id="streamerForm"><input type="hidden" name="id" value="${esc(s?.id||'')}"/><div class="modal-body"><div class="field"><label>Twitch username *</label><input name="handle" required maxlength="90" pattern="[A-Za-z0-9_]{2,90}" placeholder="e.g. summit1g" value="${esc(s?.handle||'')}" /></div><div class="field"><label>Display name</label><input name="name" maxlength="100" placeholder="Optional" value="${esc(s?.name||'')}"/></div><div class="field"><label>Priority</label><select name="priority"><option value="3" ${s?.priority===3?'selected':''}>Priority 1 · Top source</option><option value="2" ${s?.priority===2?'selected':''}>Priority 2 · Strong prospect</option><option value="1" ${!s||s?.priority===1?'selected':''}>Priority 3 · Monitor</option></select></div><div class="field"><label>Partnership / outreach notes</label><textarea name="notes" maxlength="1000" placeholder="Contact status, preferred genres, introductions, submission agreement...">${esc(s?.notes||'')}</textarea></div><p class="help-copy">This adds a creator to your radar only. It does not establish that they stream GTA VI or grant permission to use their footage.</p></div><div class="modal-foot">${isEdit?`<button class="btn btn-danger" type="button" data-remove-streamer="${esc(s.id)}">Remove</button>`:''}<button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">${isEdit?'Save creator':'Add to watchlist'}</button></div></form>`)}
-function openDrawer(id){copiedThumbnailLink='';clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
+function openDrawer(id,step){copiedThumbnailLink='';clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=step??(Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0);renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
 function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
-function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${k===current?'selected':''}>${esc(v)}</option>`).join('')}
-const clipStepTitles=['Watch','Write','Package','Publish'];
+function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${String(k)===String(current)?'selected':''}>${esc(v)}</option>`).join('')}
+const clipStepTitles=['Watch','Write','Package','Publish','Ready to Record'];
 let clipStep=0;
 function showClipStep(focus=false){
   const drawer=$('#drawerContent');
@@ -243,24 +300,28 @@ function moveClipStep(delta){
 }
 function buildClipDraft(c) {
   const title=c.title||'Untitled clip';
-  const comparison=/compar|framegen|fps| on vs |before and after/i.test(title);
-  const reaction=/first|reaction|thoughts|review/i.test(title);
-  const opening=comparison
-    ? 'What changed between the two examples, and could a viewer tell without the labels?'
-    : reaction ? 'What expectation did the creator bring in, and did the moment change it?' : 'What does the viewer expect just before the key moment?';
+  const topic=clipTopic(c);
+  const hooks={
+    Comparison:['My eyes would like a recount.','Could you pick a winner with the labels hidden?','When does smoother start to feel better?'],
+    Reaction:['That title is doing a lot of cardio.','What would a fair first impression have to show?','How much of a first impression did we bring with us?'],
+    Payoff:['I want to speak to whoever wrote the odds.','Was the outcome skill, luck, or a little of both?','Why do we call an outcome obvious after we see it?'],
+    Other:['The title has already submitted its closing argument.','What single detail would change your read of this?','How does the setup change what you notice?']
+  }[topic];
   return {
-    brief: [
-      'Feed metadata lists this clip as “'+title+'” from '+(c.streamer||'an unlisted creator')+'.',
-      'The source platform is '+(c.platform||'unlisted')+' and the clip is '+(c.duration?Math.round(c.duration)+' seconds long':'missing duration metadata')+'.',
-      'The feed recorded '+formatCount(c.views||0)+' views when this metadata was loaded.',
-      'Use the title as a lead and check it against the original clip.',
-      'Unverified: the exact dialogue, surrounding stream context, and what happened on screen.',
-      'Open the source to check those points before recording.'
+    brief:[
+      'The source entry labels this clip “'+title+'” and lists '+(c.streamer||'an unlisted creator')+'.',
+      'The listed platform is '+(c.platform||'unavailable')+'; the listed duration is '+(c.duration?Math.round(c.duration)+' seconds':'unavailable')+'.',
+      c.lastCheckedAt?'The feed recorded '+formatCount(c.views)+' views at '+fmtDate(c.lastCheckedAt)+'.':'There is no dated view snapshot for this lead.',
+      'The title is a source claim that needs checking against the recording.',
+      'This draft is based on metadata and no footage was independently reviewed.',
+      'The exact dialogue, on-screen events, and surrounding context remain unverified.'
     ].join(' '),
-    angle1: opening+' Open on a line or frame that supports the question. Land on one detail you can actually show.',
-    angle2: 'Retell the moment in three beats: setup, turn, payoff. Cut any setup the audience can infer from one frame. If the payoff is unclear without the stream, find the context first.',
-    angle3: 'Pick one assumption a viewer might make from the clip title. Pause on the frame that tests that assumption and explain what it does or does not show. End with a question a skeptical viewer could answer.',
-    point: 'Sometimes the title gives us a verdict before we have seen the evidence. A good clip can make us laugh and still leave room for a second look. What would you notice if you watched the same moment without reading the title?'
+    angle1:hooks[0]+' Open on camera with that line, establish the expectation, then show the source moment if cleared. End with a callback to the opening joke.',
+    angle2:hooks[1]+' Give both plausible readings before you call it. End by naming one piece of evidence that could settle the disagreement.',
+    angle3:hooks[2]+' Use one visible detail to make the question concrete. End by asking where viewers notice the same habit in their own decisions.',
+    point:'A clip title can hand us a verdict before the video even starts. That’s a lot of authority for one line of text. What would you notice if you watched the moment without reading its title?',
+    filmingNotes:'0–3s: Deliver your opening line to camera.\n3–12s: Explain the setup and mark the original source timecode.\n12–25s: Give your take and end with a question.\nKeep captions clear of the controls and record a clean vertical master.',
+    thumbnailBrief:'Thumbnail B: use one clear source frame and your portrait when available. Choose a short line that matches the argument and check readability at phone size.'
   };
 }
 
@@ -355,7 +416,7 @@ async function paintThumbnail(c) {
   const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
   const status=$('#thumbnailStatus');
   if(status)status.textContent=art
-    ? 'Source image: '+art.naturalWidth+' × '+art.naturalHeight+(art.naturalWidth<900?'. For a sharper cover, upload a full-resolution frame under Episode image.':'.')
+    ? 'Source image: '+art.naturalWidth+' × '+art.naturalHeight+(art.naturalWidth<1280||art.naturalHeight<720?'. Low-resolution source. Try a direct video or upload a source frame.':'.')
     : 'Clip image unavailable for export. Choose an episode image.';
   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   ctx.fillStyle='#332318';ctx.fillRect(0,0,w,h);
@@ -439,7 +500,7 @@ async function fetchThumbnailFrame(c,source,local=false) {
     }
     if(pendingFrames.get(c.id)!==request)return;
     artworkByClip.set(c.id,frame.toDataURL('image/png'));
-    if(findSelected()?.id===c.id){await paintThumbnail(c);toast('Video frame added to Thumbnail B.');}
+    if(findSelected()?.id===c.id){await paintThumbnail(c);toast('Used a frame from '+video.videoWidth+' × '+video.videoHeight+' video.');}
   }catch{
     if(pendingFrames.get(c.id)===request&&findSelected()?.id===c.id){
       const currentStatus=$('#thumbnailStatus');
@@ -515,8 +576,9 @@ function selectedAngleText(c) {
 function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id===clipSelected);if(!c){closeDrawer();return}const r=clipRights(c),part=scoreParts(c),img=safeUrl(c.thumbnail);const check=c.checks||{};const pass=isCleared(c);const stages=stageOrder.map(k=>[k,statusTitles[k]]);const source=safeUrl(c.url);const embed=twitchClipEmbed(source);const drawer=$('#drawerContent');
  drawer.innerHTML=`<div class="drawer-top"><div><span class="eyebrow">CLIP DOSSIER / ${esc(c.platform)}</span><h2>${esc(c.title)}</h2><span class="fineprint">@${esc(c.streamer||'unknown')} · ${ago(c.createdAt)} · ${formatCount(c.views)} views</span></div><button class="icon-button" data-action="close-drawer" aria-label="Close editor">✕</button></div><div class="drawer-body">
   <div class="clip-step-nav"><div><span id="clipStepCount" class="eyebrow"></span><h3 id="clipStepTitle" tabindex="-1"></h3></div></div>
-  <section class="clip-step"><div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
+  <section class="clip-step"><div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 OPPORTUNITY</span>${rightsTag(c)}</div></div>
   <div class="drawer-actions">${source?`<a class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(source)}">↗ Original clip</a>`:''}<button class="btn btn-ghost btn-sm" data-action="copy-clip-url">⧉ Copy link</button>${c.status==='discovered'?btn('shortlist-clip','Add to shortlist','accent'):tag(c.status)}</div>
+    ${sourceReview(c,part)}
   </section><section class="clip-step production-section"><div class="production-fields">
     <button class="btn btn-accent" data-action="draft-brief">Draft brief</button><p class="fineprint">Starts from clip metadata. Watch the source to verify the details.</p>
     <div class="angle-grid">${['angle1','angle2','angle3'].map(key=>`<article class="angle-card">${productionField(c,key)}<button type="button" class="btn btn-soft" data-use-angle="${key}" aria-pressed="${c.production?.selectedAngle===key}">${c.production?.selectedAngle===key?'Selected':'Use this angle'}</button></article>`).join('')}</div>
@@ -541,6 +603,7 @@ function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id
     <button class="btn btn-soft" data-action="copy-thumbnail-brief">Copy thumbnail brief</button>
     ${thumbnailBuilder(c)}
   </div></section><section class="clip-step production-section"><div class="field"><label>Current production stage</label><select data-clip-field="status">${optionList([...stages,['archived','Archived']],c.status||'discovered')}</select></div>${!pass?`<p class="fineprint">Record permissions in the rights section before advancing into production.</p>`:''}<details class="production-section"><summary>Rights record</summary><div class="field"><label>Authorization status</label><select id="rightStatus">${optionList([['unknown','Unknown / unverified'],['requested','Permission requested'],['granted','Creator granted permission'],['denied','Denied / do not use'],['own','Owned footage'],['other_basis','Other documented legal basis']],r.status||'unknown')}</select></div><div class="field"><label>Evidence / approval reference</label><input id="rightEvidence" value="${esc(r.evidence||'')}" placeholder="Link to agreement, DM record, email reference..."/></div><div class="field"><label>Scope / allowed platforms</label><input id="rightScope" value="${esc(r.scope||'')}" placeholder="e.g. TikTok, YouTube Shorts, Instagram; non-exclusive" /></div><div class="field"><label>Permission notes / rationale</label><textarea id="rightNote" placeholder="Terms, limitations, expiry, or reasoning for other legal basis...">${esc(r.note||'')}</textarea></div><button class="btn btn-soft" data-action="save-rights">Save rights record</button><div class="fineprint" style="margin-top:10px">${r.confirmedAt?'Last documented: '+esc(fmtDate(r.confirmedAt)):'No clearance documented yet.'}</div></details><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
+  <section class="clip-step production-section">${recordKit(c)}</section>
   </div><footer class="clip-step-footer"><span id="draftSaveState" class="fineprint" role="status">Drafts stay on this device</span><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
  showClipStep();
 }
@@ -548,7 +611,7 @@ function findSelected(){return state.clips.find(c=>c.id===clipSelected)}
 function requireClearance(target,c){if(['approved','editing','review','scheduled','published'].includes(target)){if(!isCleared(c)){toast('Document rights clearance before moving into production.',true);return false}if(target==='published'&&(!(c.postedUrl||'').trim())){toast('Add the live published URL before marking Published.',true);return false}}return true}
 function statusAdvance(){let c=findSelected();if(!c)return;let idx=stageOrder.indexOf(c.status);let next=stageOrder[Math.min(stageOrder.length-1,idx+1)];if(idx<0||idx===stageOrder.length-1){toast('No later pipeline stage');return}if(!requireClearance(next,c))return;c.status=next;changed('Pipeline advanced',c.title+' → '+statusTitles[next]);toast('Moved to '+statusTitles[next])}
 function saveRights(){const c=findSelected();if(!c)return;const status=$('#rightStatus').value,evidence=$('#rightEvidence').value.trim(),scope=$('#rightScope').value.trim(),note=$('#rightNote').value.trim();if(['granted','other_basis'].includes(status)&&evidence.length<4){toast('Add a meaningful evidence or authorization reference.',true);return}if(status==='granted'&&!scope){toast('Specify where reuse was authorized.',true);return}if(status==='other_basis'&&note.length<6){toast('Document the basis and your reasoning.',true);return}c.rights={status,evidence,scope,note,confirmedAt:nowISO()};if(!isCleared(c)&&['approved','editing','review','scheduled','published'].includes(c.status)){c.status='rights'}changed('Rights status updated',c.title+' · '+status);toast('Rights record saved')}
-function addManualClip(form){const fd=new FormData(form),url=safeUrl(fd.get('url'));if(!url){toast('Enter a valid http(s) source URL.',true);return}if(state.clips.some(c=>c.url===url)){toast('This source URL is already tracked.',true);return}const c={id:makeID(),sourceId:'',url,title:String(fd.get('title')).trim(),streamer:String(fd.get('streamer')).trim().replace(/^@/,''),platform:String(fd.get('platform')),views:Math.max(0,Number(fd.get('views')||0)),duration:Number(fd.get('duration')||0),createdAt:fd.get('createdAt')?new Date(fd.get('createdAt')).toISOString():nowISO(),discoveredAt:nowISO(),thumbnail:'',status:'discovered',rating:0,hook:'',valueAdd:'',editor:'',postedUrl:'',checks:{},rights:{status:'unknown',evidence:'',scope:'',note:'',confirmedAt:''}};state.clips.push(c);closeModal();page='discovery';changed('Clip added',c.title);toast('Clip added to Discovery')}
+function addManualClip(form){const fd=new FormData(form),url=safeUrl(fd.get('url'));if(!url){toast('Enter a valid http(s) source URL.',true);return}if(state.clips.some(c=>clipKey(c)===clipKey({url}))){toast('This source URL is already tracked.',true);return}const c={id:makeID(),sourceId:'',url,title:String(fd.get('title')).trim(),streamer:String(fd.get('streamer')).trim().replace(/^@/,''),platform:String(fd.get('platform')),views:Math.max(0,Number(fd.get('views')||0)),duration:Number(fd.get('duration')||0),createdAt:fd.get('createdAt')?new Date(fd.get('createdAt')).toISOString():'',discoveredAt:nowISO(),thumbnail:'',status:'discovered',rating:0,hook:'',valueAdd:'',editor:'',postedUrl:'',checks:{},rights:{status:'unknown',evidence:'',scope:'',note:'',confirmedAt:''}};state.clips.push(c);closeModal();page='discovery';changed('Clip added',c.title);toast('Clip added to Discovery')}
 function upsertStreamer(form){const fd=new FormData(form),handle=String(fd.get('handle')||'').trim().replace(/^@/,'').toLowerCase();if(!/^[a-z0-9_]{2,90}$/.test(handle)){toast('Use a valid Twitch username.',true);return}const id=String(fd.get('id')||''),existing=state.streamers.find(s=>s.id===id);if(state.streamers.some(s=>s.handle.toLowerCase()===handle&&s.id!==id)){toast('This streamer is already on your watchlist.',true);return}const data={id:existing?.id||makeID(),handle,name:String(fd.get('name')||'').trim(),platform:'Twitch',priority:Number(fd.get('priority')),notes:String(fd.get('notes')||'').trim()};if(existing)Object.assign(existing,data);else state.streamers.push(data);closeModal();changed(existing?'Creator updated':'Creator added',handle);toast(existing?'Creator updated':'Added to radar')}
 async function scan(){await refreshFeed(false)}
 function exportJSON(){const raw=JSON.stringify({...state,exportedAt:nowISO()},null,2);const blob=new Blob([raw],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='leonida-signal-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1200);toast('Backup exported')}
@@ -568,12 +631,33 @@ document.addEventListener('click',async e=>{
     return;
   }
 
+ const recordButton=e.target.closest('[data-record-clip]');
+ if(recordButton){openDrawer(recordButton.dataset.recordClip,4);return}
+ const packageButton=e.target.closest('[data-copy-package]');
+ if(packageButton){const c=findSelected();if(c)await copyToClipboard(platformPackage(c,packageButton.dataset.copyPackage));return}
+ const removeResult=e.target.closest('[data-remove-result]');
+ if(removeResult&&confirm('Delete this performance entry?')){
+   state.performance=state.performance.filter(row=>row.id!==removeResult.dataset.removeResult);
+   changed();
+   return;
+ }
  const nav=e.target.closest('[data-page]');if(nav){route(nav.dataset.page);return}
  const open=e.target.closest('[data-open-clip]');if(open){openDrawer(open.dataset.openClip);return}
  const edit=e.target.closest('[data-edit-streamer]');if(edit){modalStreamer(state.streamers.find(s=>s.id===edit.dataset.editStreamer));return}
  const visit=e.target.closest('[data-open-streamer]');if(visit){const s=state.streamers.find(x=>x.id===visit.dataset.openStreamer);if(s)window.open('https://www.twitch.tv/'+encodeURIComponent(s.handle),'_blank','noopener,noreferrer');return}
  const remove=e.target.closest('[data-remove-streamer]');if(remove){const s=state.streamers.find(x=>x.id===remove.dataset.removeStreamer);if(s&&confirm('Remove @'+s.handle+' from the watchlist? Existing clips remain.')){state.streamers=state.streamers.filter(x=>x.id!==s.id);closeModal();changed('Creator removed',s.handle)}return}
  const action=e.target.closest('[data-action]')?.dataset.action;if(action){switch(action){case 'clip-step-back':moveClipStep(-1);break;case 'clip-step-next':moveClipStep(1);break;case 'add-clip':modalAddClip();break;case 'add-streamer':modalStreamer();break;case 'scan':await scan();break;case 'close-modal':closeModal();break;case 'close-drawer':closeDrawer();break;case 'nav-discovery':route('discovery');break;case 'nav-pipeline':route('pipeline');break;
+ case 'mark-record':{
+   const c=findSelected();
+   if(!c)break;
+   if(!c.production?.ready&&!c.production?.script?.trim()){toast('Write a script before marking Ready to Record.',true);break}
+   c.production={...c.production,ready:!c.production.ready};
+   changed('Recording readiness updated',c.title);break;
+ }
+ case 'add-suggested-creators':{
+   for(const [handle,name] of watchlistSuggestions())state.streamers.push({id:makeID(),handle,name,platform:'Twitch',priority:1,notes:'Discovery candidate'});
+   changed('Creator suggestions added','Watchlist');break;
+ }
  case 'shortlist-clip':{const c=findSelected();if(c?.status==='discovered'){c.status='shortlisted';changed('Clip shortlisted',c.title);toast('Added to the pipeline')}break}
  case 'play-clip':{
    const c=findSelected(), embed=c&&twitchClipEmbed(c.url), hero=$('#drawerContent .detail-hero');
@@ -662,6 +746,8 @@ document.addEventListener('click',async e=>{
  ].filter(Boolean).join('\n'));}break}case 'export':exportJSON();break;case 'import':$('#importFile')?.click();break;case 'copy-clip-url':if(findSelected())copyToClipboard(findSelected().url);break;case 'save-rights':saveRights();break;case 'advance-clip':statusAdvance();break;case 'archive-clip':{let c=findSelected();if(c){c.status='archived';changed('Clip archived',c.title);toast('Archived')}}break;case 'delete-clip':{let c=findSelected();if(c&&confirm('Permanently remove this clip record?')){state.clips=state.clips.filter(x=>x.id!==c.id);closeDrawer();changed('Clip deleted',c.title);toast('Clip removed')}}break}}
 });
 document.addEventListener('submit',e=>{
+ if(e.target.id==='verificationForm'){e.preventDefault();saveVerification(e.target);return}
+ if(e.target.id==='performanceForm'){e.preventDefault();savePerformance(e.target);return}
  if(e.target.id==='researchImportForm'){
    e.preventDefault();
    const c=findSelected();
@@ -701,7 +787,164 @@ $('#exportBtn').addEventListener('click',exportJSON);
 $('#quickScan').addEventListener('click',scan);
 const tick=()=>{$('#timeDisplay').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};tick();setInterval(tick,30000);
 setInterval(()=>{if(state.settings.autoScan&&!busy&&(!lastFeedRefresh||Date.now()-new Date(lastFeedRefresh).getTime()>30*60000))scan()},60000);
+
+
+
+
+const verificationLabels={unverified:'Unverified',partial:'Partially Verified',verified:'Verified'};
+function sourceReview(c,parts){
+  const v=c.verification||{};
+  const status=v.status||'unverified';
+  const hours=parts.rate==null?'Needs two dated feed snapshots':parts.rate.toFixed(1)+' views/hour';
+  const vod=/^\d+$/.test(c.vodId||'')?'https://www.twitch.tv/videos/'+c.vodId+
+    (Number.isInteger(c.vodOffset)&&c.vodOffset>=0?'?t='+c.vodOffset+'s':''):'';
+  return `<div class="r2-section">
+    <h3>Source and verification</h3>
+    <p class="fineprint">${esc(c.sourceType==='twitch-api'?'Twitch Helix metadata':c.sourceType==='curated-starter'?'Curated lead':'Manually entered source')} · Clip timestamp ${esc(fmtDate(c.createdAt))} · ${esc(hours)}</p>
+    ${c.discoverySources?.length?`<p class="fineprint">Found via ${esc(c.discoverySources.join(', '))}</p>`:''}
+    ${c.clipper?`<p class="fineprint">Clipped by ${esc(c.clipper)}</p>`:''}
+    ${vod?`<a class="btn btn-soft" href="${esc(vod)}" target="_blank" rel="noopener noreferrer">Original stream</a>`:''}
+    <p class="fineprint">Ranking · Velocity ${parts.velocity}/35 · Views ${parts.traction}/20 · Freshness ${parts.fresh}/20 · Creator ${parts.priority}/10 · Commentary ${parts.editorial}/15</p>
+    <p class="fineprint">${esc(verificationLabels[status]||verificationLabels.unverified)} · ${v.reviewed?'Footage review reported by workspace owner':'No independent footage review recorded'}${v.checkedAt?' · '+esc(fmtDate(v.checkedAt)):''}</p>
+    <form id="verificationForm" class="production-fields">
+      <label>Verification status<select name="status">${optionList(Object.entries(verificationLabels),status)}</select></label>
+      <label class="check-item"><input type="checkbox" name="reviewed" ${v.reviewed?'checked':''}> I reviewed the original footage</label>
+      <label>Evidence or notes<textarea name="notes" maxlength="3000" placeholder="What you confirmed, at what timecode, and what remains uncertain">${esc(v.notes||'')}</textarea></label>
+      <label>Attribution<textarea name="credit" maxlength="1200" placeholder="Streamer, clipper, original link, third-party material and required credits">${esc(v.credit||'')}</textarea></label>
+      <div class="r2-actions"><button class="btn btn-soft">Save source review</button></div>
+    </form>
+  </div>`;
+}
+function saveVerification(form){
+  const clip=findSelected();
+  if(!clip)return;
+  const data=new FormData(form),status=data.get('status'),reviewed=data.has('reviewed');
+  const notes=String(data.get('notes')||'').trim();
+  if(!Object.hasOwn(verificationLabels,status))return;
+  if((status==='verified'&&!reviewed)||(status!=='unverified'&&!notes)){
+    toast('Verified requires original footage review. Add supporting evidence for Verified or Partially Verified.',true);
+    return;
+  }
+  clip.verification={status,reviewed,notes,credit:String(data.get('credit')||'').trim(),checkedAt:nowISO()};
+  changed('Source review saved',clip.title);
+  toast('Source review saved');
+}
+const publishingPlatforms=['YouTube Shorts','TikTok','X'];
+function platformPackage(clip,platform){
+  const p=clip.production||{};
+  const headline=p.thumbnailHeadline||suggestThumbnailHeadline(clip);
+  const creator=clip.streamer||'original streamer';
+  const hook=(clip.hook||p[p.selectedAngle]||'What stood out to you?').split(/(?<=[.!?])\s/)[0];
+  const caption=p.chosenCaption?.trim();
+  let copy;
+  if(platform==='YouTube Shorts')copy=['Title: '+headline,'Description: '+(caption||hook),'Pinned comment: What detail changed your read?'];
+  if(platform==='TikTok')copy=['Caption: '+(caption||hook)+' What did you notice first?','Cover: '+headline];
+  if(platform==='X')copy=['Post: '+short(caption||hook,220),'Add the source in the post or a reply.'];
+  return [
+    ...(copy||[]),
+    'Credit: '+(clip.verification?.credit||creator),
+    'Original source: '+clip.url,
+    'Export: Clean vertical master (9:16) with readable captions. Check the cover and credits on the destination before uploading manually.',
+    'After posting: Save the live URL and log results at a consistent post age.'
+  ].join('\n');
+}
+function recordKit(c){
+  const p=c.production||{},source=safeUrl(c.url);
+  return `<div class="production-fields">
+    <div class="r2-actions">${btn('mark-record',p.ready?'Return to drafts':'Mark ready to record','accent')}${source?`<a class="btn btn-soft" href="${esc(source)}" target="_blank" rel="noopener noreferrer">Open original source</a>`:''}</div>
+    <p class="fineprint">${esc(verificationLabels[c.verification?.status]||verificationLabels.unverified)} · Reuse ${rightsTag(c)}</p>
+    <p class="fineprint">${esc(selectedAngleText(c))}</p>
+    <h3>Script</h3><p class="r2-copy">${esc(p.script||'Write the script in the Write step.')}</p>
+    ${productionField(c,'filmingNotes')}
+    <h3>Thumbnail concept</h3><p class="r2-copy">${esc(p.thumbnailBrief||'Choose one clear source frame and use the Thumbnail B layout in Package.')}</p>
+    <h3>Publishing packages</h3>
+    ${publishingPlatforms.map((platform)=>`<details class="production-section"><summary>${platform}</summary><p class="r2-copy">${esc(platformPackage(c,platform))}</p><button class="btn btn-soft" data-copy-package="${platform}" aria-label="Copy ${platform} package">Copy package</button></details>`).join('')}
+  </div>`;
+}
+function renderRecord(){
+  const clips=state.clips.filter(c=>!['archived','published'].includes(c.status)&&(c.status!=='discovered'||c.production?.script?.trim()))
+    .sort((a,b)=>Number(!!(b.production?.ready&&b.production?.script?.trim()))-Number(!!(a.production?.ready&&a.production?.script?.trim()))||score(b)-score(a));
+  return pageTop('','Ready to Record','Open your script, filming notes, source and publishing packages from one place.')+
+    (clips.length?`<div class="r2-list">${clips.map(c=>`<article class="r2-section"><strong>${esc(c.title)}</strong><p class="fineprint">${esc(c.streamer)} · ${c.production?.ready&&c.production?.script?.trim()?'Ready to record':'Draft'}</p><button class="btn btn-soft" data-record-clip="${esc(c.id)}">Open recording kit</button></article>`).join('')}</div>`:empty('▶','No recording drafts','Shortlist a clip in Discovery to start.', 'nav-discovery','Open Discovery'));
+}
+const resultMetrics=[
+  ['views','Views'],['reach','Reach'],['retention','Average viewed (%)'],['shares','Shares'],
+  ['engagement','Interactions'],['subscribers','Subscribers gained']
+];
+const durationBucket=seconds=>seconds<=15?'Up to 15s':seconds<=30?'16–30s':seconds<=60?'31–60s':'Over 60s';
+function savePerformance(form){
+  const data=new FormData(form);
+  const url=safeUrl(data.get('url')),platform=data.get('platform'),clip=state.clips.find(c=>c.id===data.get('clip'));
+  if(!url||!publishingPlatforms.includes(platform)){toast('Enter a published URL and choose a platform.',true);return}
+  const stats=Object.fromEntries(resultMetrics.map(([key])=>[key,data.get(key)===''?null:Number(data.get(key))]));
+  if(Object.values(stats).every(value=>value===null)){toast('Enter at least one measured result.',true);return}
+  const row={
+    id:makeID(),clipId:clip?.id||'',url,platform,window:Number(data.get('window')),stats,
+    topic:String(data.get('topic')).trim(),format:String(data.get('format')).trim(),
+    hook:String(data.get('hook')).trim(),duration:Number(data.get('duration')),loggedAt:nowISO()
+  };
+  const matching=state.performance.find(r=>r.platform===platform&&r.window===row.window&&clipKey(r)===clipKey(row));
+  if(matching){row.id=matching.id;Object.assign(matching,row)}else state.performance.unshift(row);
+  changed('Performance saved',platform);
+  toast(matching?'Performance entry updated':'Performance entry saved');
+}
+function analyticsBreakdown(platform,window,metric){
+  const rows=state.performance.filter(r=>r.platform===platform&&r.window===window&&Number.isFinite(r.stats[metric]));
+  const dimensions=[['topic','Topic'],['format','Format'],['hook','Hook'],['duration','Duration']];
+  return dimensions.map(([key,label])=>{
+    const groups=new Map();
+    for(const row of rows){
+      const name=key==='duration'?durationBucket(row.duration):row[key];
+      if(!name)continue;
+      const groupKey=name.toLowerCase();
+      const group=groups.get(groupKey)||{name,count:0,total:0};
+      group.count++;group.total+=row.stats[metric];groups.set(groupKey,group);
+    }
+    const ranking=[...groups.values()].sort((a,b)=>b.total/b.count-a.total/a.count);
+    return `<div><h4>${label}</h4>${ranking.length?`<ul>${ranking.map(g=>`<li>${esc(g.name)} · ${(g.total/g.count).toLocaleString(undefined,{maximumFractionDigits:1})} average · n=${g.count}</li>`).join('')}</ul>`:'<p class="fineprint">No measured results.</p>'}</div>`;
+  }).join('');
+}
+let analyticsFilter={platform:publishingPlatforms[0],window:7,metric:'views'};
+function renderAnalytics(){
+  return pageTop('','Performance','Log one snapshot per platform, post and measurement window. Leave unavailable metrics blank.')+`
+    <div class="r2-section"><h3>Log a published video</h3>
+      <form id="performanceForm" class="production-fields">
+        <div class="form-grid">
+          <label>Published URL<input type="url" name="url" required></label>
+          <label>Linked clip<select name="clip"><option value="">Optional</option>${optionList(state.clips.map(c=>[c.id,c.title]),'')}</select></label>
+          <label>Platform<select name="platform">${optionList(publishingPlatforms.map(p=>[p,p]),analyticsFilter.platform)}</select></label>
+          <label>Post age<select name="window">${optionList([[1,'1 day'],[7,'7 days'],[30,'30 days']],analyticsFilter.window)}</select></label>
+          <label>Topic<input name="topic" required maxlength="100" placeholder="e.g. GTA performance"></label>
+          <label>Format<input name="format" required maxlength="100" placeholder="e.g. comparison"></label>
+          <label>Hook type<input name="hook" required maxlength="100" placeholder="e.g. blind test"></label>
+          <label>Video seconds<input name="duration" type="number" min="1" max="36000" required></label>
+          ${resultMetrics.map(([key,label])=>`<label>${label}<input name="${key}" type="number" min="0" step="${key==='retention'?'0.01':'1'}"></label>`).join('')}
+        </div>
+        <div class="r2-actions"><button class="btn btn-accent">Save results</button></div>
+      </form>
+    </div>
+    <div class="r2-section"><h3>What’s performing</h3>
+      <p class="fineprint">Averages compare a single platform and post age. Small samples are directional.</p>
+      <div class="form-grid">
+        <label>Platform<select data-analytics-filter="platform">${optionList(publishingPlatforms.map(p=>[p,p]),analyticsFilter.platform)}</select></label>
+        <label>Post age<select data-analytics-filter="window">${optionList([[1,'1 day'],[7,'7 days'],[30,'30 days']],analyticsFilter.window)}</select></label>
+        <label>Metric<select data-analytics-filter="metric">${optionList(resultMetrics,analyticsFilter.metric)}</select></label>
+      </div>
+      <div id="analyticsBreakdown" class="form-grid">${analyticsBreakdown(analyticsFilter.platform,analyticsFilter.window,analyticsFilter.metric)}</div>
+    </div>
+    <div class="r2-section"><h3>Saved results</h3>
+      ${state.performance.map(r=>`<article class="r2-result">
+        <a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.topic)} · ${esc(r.platform)} · Day ${esc(r.window)}</a>
+        <p class="fineprint">${resultMetrics.filter(([k])=>r.stats[k]!=null).map(([k,label])=>esc(label)+' '+num(r.stats[k])).join(' · ')}</p>
+        <button class="btn btn-ghost btn-sm" data-remove-result="${esc(r.id)}">Delete entry</button>
+      </article>`).join('')||'<p class="fineprint">No published performance logged yet.</p>'}
+    </div>`;
+}
+document.addEventListener('change',e=>{
+  const key=e.target.dataset.analyticsFilter;
+  if(!key)return;
+  analyticsFilter[key]=key==='window'?Number(e.target.value):e.target.value;
+  $('#analyticsBreakdown').innerHTML=analyticsBreakdown(analyticsFilter.platform,analyticsFilter.window,analyticsFilter.metric);
+});
+
 load();
-
-
-

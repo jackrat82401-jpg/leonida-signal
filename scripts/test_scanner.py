@@ -38,6 +38,10 @@ class ScannerContractTests(unittest.TestCase):
         self.assertEqual(len(clips), 1)
         self.assertEqual(clips[0]['id'], 'aaa')
         self.assertEqual(clips[0]['view_count'], 320)
+        self.assertEqual(clips[0]['discovery_sources'], [
+            'Twitch category · 48 hours', 'Twitch category · recent', 'Creator watchlist · caseoh_'
+        ])
+        self.assertEqual(info['watchlistChecked'], 1)
 
     def test_unknown_category_is_reported_not_faked(self):
         class Missing(FakeTwitch):
