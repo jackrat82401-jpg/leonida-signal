@@ -197,6 +197,7 @@ function showClipStep(focus=false){
   const drawer=$('#drawerContent');
   drawer.querySelectorAll('.clip-step').forEach((section,i)=>{section.hidden=i!==clipStep});
   $('#clipStepTitle').textContent=clipStepTitles[clipStep];
+  drawer.querySelector('.clip-step-nav').dataset.clipStep=clipStep===1?'research':'';
   $('#clipStepCount').textContent='Step '+(clipStep+1)+' of '+clipStepTitles.length;
   $('#clipStepBack').disabled=clipStep===0;
   $('#clipStepNext').textContent=clipStep===clipStepTitles.length-1?'Done':'Next →';
