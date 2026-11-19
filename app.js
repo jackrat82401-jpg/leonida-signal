@@ -288,12 +288,12 @@ function thumbnailBuilder(c) {
   return `<div class="thumbnail-builder">
     <h4>Thumbnail B</h4>
     <div class="drawer-actions">
-      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy 1080p image link</button>
+      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy original clip URL</button>
       <button class="btn btn-accent" data-action="paste-thumbnail-link">Paste &amp; make thumbnail</button>
     </div>
     <div class="field"><label for="thumbnailSourceLink">Clip, video, or image link</label><input id="thumbnailSourceLink" type="url" placeholder="Paste a clip link or a direct video or image URL"/></div>
     <button class="btn btn-soft" data-action="make-thumbnail-from-link">Make thumbnail</button>
-    <p class="fineprint" id="thumbnailStatus" role="status">Uses your caption or angle, the clip image when available, and your saved portrait.</p>
+    <p class="fineprint" id="thumbnailStatus" role="status">Copy the original clip URL to send it to ChatGPT, or paste an image or video link here to build the thumbnail.</p>
     <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
     <details class="production-section"><summary>Use a sharper video frame</summary>
       <div class="field"><label for="thumbnailVideo">Video file</label><input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"/></div>
@@ -605,24 +605,18 @@ document.addEventListener('click',async e=>{
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
  case 'copy-thumbnail-link':{
-   const c=findSelected();
-   if(!c)break;
-   const status=$('#thumbnailStatus');
-   if(status)status.textContent='Checking for a 1080p source…';
-   const source=artworkByClip.get(c.id);
-   const image=source?.startsWith('https:')?await loadThumbnailImage(source,true):await loadClipArtwork(safeUrl(c.thumbnail));
-   if(findSelected()?.id!==c.id||!status?.isConnected)break;
-   if(!image||image.naturalWidth<1920||image.naturalHeight<1080){
-     copiedThumbnailLink='';
-     status.textContent=image
-       ? 'No 1080p image link available ('+image.naturalWidth+' × '+image.naturalHeight+'). Paste a direct 1080p video or image link, or choose a 1080p video file.'
-       : 'No 1080p image link available. Use a direct video or image link, or choose a video file.';
-     break;
+   const c=findSelected(),input=$('#thumbnailSourceLink');
+   if(!c||!input)break;
+   const source=safeUrl(c.url);
+   if(!source){toast('This clip has no source URL.',true);break;}
+   copiedThumbnailLink=source;
+   try{
+     await navigator.clipboard.writeText(source);
+     toast('Original clip URL copied. Paste it into ChatGPT.');
+   }catch{
+     if(input.isConnected){input.value=source;input.focus();input.select();}
+     toast('Copy the selected original clip URL and paste it into ChatGPT.');
    }
-   copiedThumbnailLink=image.src;
-   $('#thumbnailSourceLink').value=image.src;
-   status.textContent='1080p image link ready. Select Paste & make thumbnail.';
-   await copyToClipboard(image.src);
    break;
  }
  case 'paste-thumbnail-link':{
