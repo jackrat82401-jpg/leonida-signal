@@ -290,7 +290,7 @@ function thumbnailBuilder(c) {
     <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
     <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
     <p class="fineprint">Your portrait is reused on this browser. Episode images stay available while this tab is open.</p>
-    <canvas id="thumbnailPreview" width="1280" height="720" aria-label="Thumbnail B preview"></canvas>
+    <canvas id="thumbnailPreview" style="width:min(100%,680px)" width="1280" height="720" aria-label="Thumbnail B preview"></canvas>
     <button class="btn btn-soft" data-action="download-thumbnail">Download PNG</button>
     <button class="btn btn-ghost" data-action="remove-portrait">Remove portrait</button>
   </div>`;
@@ -310,25 +310,46 @@ function drawCover(ctx,img,x,y,w,h) {
   ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
   ctx.restore();
 }
+const clipArtworkCache=new Map();
+function loadClipArtwork(source) {
+  if(!source)return Promise.resolve(null);
+  if(!clipArtworkCache.has(source)){
+    const original=loadThumbnailImage(source,true);
+    let preferred=Promise.resolve(null);
+    try{
+      const url=new URL(source);
+      if(/(?:^|\.)twitch\.tv$/i.test(url.hostname)&&/-preview-\d+x\d+\.(?:jpg|jpeg|png)$/i.test(url.pathname)){
+        url.pathname=url.pathname.replace(/-preview-\d+x\d+(\.[^.]+)$/i,'-preview-1280x720$1');
+        if(url.href!==source)preferred=loadThumbnailImage(url.href,true);
+      }
+    }catch{}
+    clipArtworkCache.set(source,Promise.all([preferred,original]).then(([larger,standard])=>
+      larger&&(!standard||larger.naturalWidth>standard.naturalWidth)?larger:standard));
+  }
+  return clipArtworkCache.get(source);
+}
 async function paintThumbnail(c) {
   const canvas=$('#thumbnailPreview');
   if(!canvas||!c)return;
   const [art,portrait,logo]=await Promise.all([
-    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id)):loadThumbnailImage(safeUrl(c.thumbnail),true),
+    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id)):loadClipArtwork(safeUrl(c.thumbnail)),
     loadThumbnailImage(readPortrait()),
     loadThumbnailImage(document.querySelector('link[rel=icon]')?.href)
   ]);
   if(!canvas.isConnected||findSelected()?.id!==c.id)return;
   const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
   const status=$('#thumbnailStatus');
-  if(status)status.textContent=art?(portrait?'Image and portrait ready.':'Image ready. Add your portrait once to reuse it.'):'Clip image unavailable for export. Choose an episode image below.';
+  if(status)status.textContent=art
+    ? 'Source image: '+art.naturalWidth+' × '+art.naturalHeight+(art.naturalWidth<900?'. For a sharper cover, upload a full-resolution frame under Episode image.':'.')
+    : 'Clip image unavailable for export. Choose an episode image.';
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   ctx.fillStyle='#332318';ctx.fillRect(0,0,w,h);
   if(art)drawCover(ctx,art,0,0,w,h);
   if(portrait)drawCover(ctx,portrait,850,90,410,610);
   const shade=ctx.createLinearGradient(0,0,920,0);
-  shade.addColorStop(0,'#241a13ef');shade.addColorStop(1,'#241a1300');
+  shade.addColorStop(0,'#160f0ac7');shade.addColorStop(.48,'#160f0a65');shade.addColorStop(1,'#160f0a00');
   ctx.fillStyle=shade;ctx.fillRect(0,0,w,h);
-  ctx.fillStyle='#f7d5ab24';
+  ctx.fillStyle='#f7d5ab14';
   for(let y=32;y<h;y+=10)for(let x=30;x<800;x+=10){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();}
   ctx.strokeStyle='#fff5de';ctx.lineWidth=5;ctx.strokeRect(18,18,w-36,h-36);
   if(logo)ctx.drawImage(logo,46,48,83,83);
