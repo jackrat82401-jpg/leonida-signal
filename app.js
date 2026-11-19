@@ -287,6 +287,12 @@ function thumbnailBuilder(c) {
     <button class="btn btn-accent" data-action="prepare-thumbnail">Package thumbnail</button>
     <p class="fineprint" id="thumbnailStatus" role="status">Uses your caption or angle, the clip image when available, and your saved portrait.</p>
     <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
+    <details class="production-section"><summary>Use a sharper video frame</summary>
+      <div class="field"><label for="thumbnailVideo">Video file</label><input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"/></div>
+      <div class="field"><label for="thumbnailVideoUrl">Or a direct video URL</label><input id="thumbnailVideoUrl" type="url" placeholder="https://…/clip.mp4"/></div>
+      <button class="btn btn-soft" data-action="fetch-thumbnail-frame">Fetch frame</button>
+      <p class="fineprint">Choose a video file to grab a frame automatically. Direct video URLs must allow browser access.</p>
+    </details>
     <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
     <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
     <p class="fineprint">Your portrait is reused on this browser. Episode images stay available while this tab is open.</p>
@@ -359,6 +365,82 @@ async function paintThumbnail(c) {
   ctx.fillStyle='#fff5de';ctx.font='900 116px Impact, Arial Black, sans-serif';
   lines.slice(0,4).forEach((line,k)=>ctx.fillText(line,55,245+k*109,740));
 }
+const pendingFrames=new Map();
+function waitForVideo(video,event,act) {
+  return new Promise((resolve,reject)=>{
+    function finish(error){
+      clearTimeout(timer);
+      video.removeEventListener(event,success);
+      video.removeEventListener('error',failure);
+      if(error)reject(error);else resolve();
+    }
+    const success=()=>finish();
+    const failure=()=>finish(new Error('Video could not load'));
+    const timer=setTimeout(failure,12000);
+    video.addEventListener(event,success);
+    video.addEventListener('error',failure);
+    try{act();}catch(error){finish(error);}
+  });
+}
+function frameScore(ctx,w,h) {
+  const pixels=ctx.getImageData(0,0,w,h).data;
+  let light=0,detail=0;
+  const gray=index=>.2126*pixels[index]+.7152*pixels[index+1]+.0722*pixels[index+2];
+  for(let y=0;y<h;y++)for(let x=1;x<w;x++){
+    const index=(y*w+x)*4,value=gray(index);
+    light+=value;
+    detail+=Math.abs(value-gray(index-4));
+  }
+  const average=light/((w-1)*h);
+  return detail/((w-1)*h)*Math.min(1,average/50,(255-average)/50);
+}
+async function fetchThumbnailFrame(c,source,local=false) {
+  if(!c||!source)return;
+  const request=Symbol();
+  pendingFrames.set(c.id,request);
+  const status=$('#thumbnailStatus');
+  if(status)status.textContent='Finding a clear video frame…';
+  const video=document.createElement('video');
+  video.muted=true;
+  video.playsInline=true;
+  video.preload='auto';
+  if(!local)video.crossOrigin='anonymous';
+  try{
+    await waitForVideo(video,'loadeddata',()=>{video.src=source;video.load();});
+    if(!Number.isFinite(video.duration)||video.duration<=0||!video.videoWidth||!video.videoHeight)throw new Error('Video has no frames');
+    const sample=document.createElement('canvas');
+    sample.width=96;sample.height=54;
+    const sampleCtx=sample.getContext('2d',{willReadFrequently:true});
+    const frame=document.createElement('canvas');
+    const scale=Math.min(1,1920/video.videoWidth,1080/video.videoHeight);
+    frame.width=Math.max(1,Math.round(video.videoWidth*scale));
+    frame.height=Math.max(1,Math.round(video.videoHeight*scale));
+    const frameCtx=frame.getContext('2d');
+    let best=-1;
+    for(const fraction of [.5,.25,.75]){
+      if(pendingFrames.get(c.id)!==request)return;
+      await waitForVideo(video,'seeked',()=>{video.currentTime=video.duration*fraction;});
+      sampleCtx.drawImage(video,0,0,96,54);
+      const score=frameScore(sampleCtx,96,54);
+      if(score>best){
+        best=score;
+        frameCtx.drawImage(video,0,0,frame.width,frame.height);
+      }
+    }
+    if(pendingFrames.get(c.id)!==request)return;
+    artworkByClip.set(c.id,frame.toDataURL('image/png'));
+    if(findSelected()?.id===c.id){await paintThumbnail(c);toast('Video frame added to Thumbnail B.');}
+  }catch{
+    if(pendingFrames.get(c.id)===request&&findSelected()?.id===c.id){
+      const currentStatus=$('#thumbnailStatus');
+      if(currentStatus)currentStatus.textContent=local?'Could not read that video. Try an MP4.':'Video unavailable. Use a direct video link that allows browser access, or choose a video file.';
+    }
+  }finally{
+    if(pendingFrames.get(c.id)===request)pendingFrames.delete(c.id);
+    video.removeAttribute('src');video.load();
+    if(local)URL.revokeObjectURL(source);
+  }
+}
 async function setThumbnailImage(input,c) {
   const file=input.files?.[0];if(!file||!c)return;
   const url=URL.createObjectURL(file);
@@ -371,7 +453,7 @@ async function setThumbnailImage(input,c) {
     canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
     const image=canvas.toDataURL('image/webp',.87);
     if(input.id==='thumbnailPortrait')localStorage.setItem(portraitKey,image);
-    else artworkByClip.set(c.id,image);
+    else {pendingFrames.delete(c.id);artworkByClip.set(c.id,image);}
     await paintThumbnail(c);
   }catch{toast('Could not load or save that image.',true);}
   finally{URL.revokeObjectURL(url);}
@@ -473,6 +555,14 @@ document.addEventListener('click',async e=>{
    if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
+ case 'fetch-thumbnail-frame':{
+   const c=findSelected();if(!c)break;
+   let url;
+   try{url=new URL($('#thumbnailVideoUrl').value.trim());}catch{}
+   if(url?.protocol!=='https:'||url.username||url.password){toast('Enter a direct HTTPS video URL.',true);break;}
+   await fetchThumbnailFrame(c,url.href);
+   break;
+ }
  case 'prepare-thumbnail':{
    const c=findSelected();if(!c)break;
    if(!c.production?.thumbnailHeadline?.trim()){
@@ -524,6 +614,7 @@ document.addEventListener('submit',e=>{
  }
  if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
 document.addEventListener('change',e=>{const t=e.target;
+ if(e.target.id==='thumbnailVideo'&&e.target.files?.[0]&&findSelected()){fetchThumbnailFrame(findSelected(),URL.createObjectURL(e.target.files[0]),true);return;}
  if(['thumbnailArtwork','thumbnailPortrait'].includes(e.target.id)&&e.target.type==='file'){setThumbnailImage(e.target,findSelected());return;}
  if(t.id==='statusFilter'){filterStatus=t.value;render();return}if(t.id==='sortFilter'){sortMode=t.value;render();return}
  if(t.id==='settingWindow'){state.settings.scanWindow=Number(t.value);changed();return}if(t.id==='settingMax'){state.settings.maxClips=Number(t.value);changed();return}if(t.id==='settingAuto'){state.settings.autoScan=t.value==='on';changed();return}
