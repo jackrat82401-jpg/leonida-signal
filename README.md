@@ -42,3 +42,13 @@ GitHub-hosted static website → reads `data/latest.json` refreshed by GitHub Ac
 ## Rights
 
 The uploader/clipper may differ from the broadcaster and does not automatically grant reuse rights. Store written authorization, allowed platforms and terms for each clip or document another defensible legal basis. Twitch permission and Rockstar's game-video policy are separate. Merely crediting someone does not grant permission, and monetization eligibility depends on platform rules.
+
+## Research Team 2.0
+
+- **Discovery.** The scheduled scanner's existing entry point reads the expanded Twitch watchlist and samples both recent and 48-hour category results. Manual source URLs still support other platforms. Each feed item can carry query provenance and VOD context. Live view growth uses two distinct dated feed observations in the same browser. Reloading an unchanged feed does not create another observation.
+- **Opportunity score.** Velocity 35, total views 20, freshness 20, watchlist priority 10, and commentary potential 15. The early velocity estimate uses views and clip age until a measured trend is available. Commentary starts with title cues until a human rating is set. Source verification and reuse permissions are independent of the opportunity score.
+- **Clip desk.** The Watch step saves a source review with evidence and credits. Write can generate a metadata-based draft with comedy, debate, and philosophy angles, or import richer research using the existing JSON format. Ready to Record collects scripts, source links, shot notes, thumbnail concepts, and copyable packages for Shorts, TikTok, and X.
+- **Performance.** Enter results for each post at day 1, 7, or 30. Saving the same platform, URL, and post age updates the snapshot. Breakdowns compare one platform, measurement window, and metric at a time and show the sample size. These records are included in browser-local backups.
+- **Artwork.** Thumbnail B reports the usable image's dimensions. Direct browser-readable video and uploaded video files can supply sharper frames. The clip page URL remains the original source link. It may only provide a low-resolution preview.
+
+Run the local review build with `python -m http.server 8765` from the project root. The fixture feed works without Twitch credentials. Run the offline scanner tests with `python -m unittest discover -s scripts -v`.

@@ -79,34 +79,54 @@ def scan():
     start_iso = stamp(end - timedelta(hours=48))
     end_iso = stamp(end)
 
-    # Get top clips for the game and extra results for configured creators.
-    clips = api.get('clips', game_id=game_id, started_at=start_iso, ended_at=end_iso, first=100)
+    # A narrower category query gives emerging clips room alongside 48-hour leaders.
+    recent_iso = stamp(end - timedelta(hours=6))
+    sources = [
+        ('Twitch category · 48 hours', api.get('clips', game_id=game_id, started_at=start_iso, ended_at=end_iso, first=100)),
+        ('Twitch category · recent', api.get('clips', game_id=game_id, started_at=recent_iso, ended_at=end_iso, first=40)),
+    ]
     handles = read_watchlist()
-    if handles:
-        for i in range(0, len(handles), 100):
-            users = api.get('users', login=handles[i:i + 100])
-            for user in users:
-                personal = api.get('clips', broadcaster_id=user['id'],
-                                   started_at=start_iso, ended_at=end_iso, first=15)
-                # Broadcaster clips can cover other games; only keep GTA VI.
-                clips.extend(c for c in personal if str(c.get('game_id', '')) == str(game_id))
+    users = api.get('users', login=handles) if handles else []
+    logins = {str(user['id']): user.get('login') for user in users}
+    for user in users:
+        personal = api.get('clips', broadcaster_id=user['id'],
+                           started_at=start_iso, ended_at=end_iso, first=15)
+        sources.append(('Creator watchlist · ' + user.get('login', ''),
+                        [clip for clip in personal if str(clip.get('game_id')) == str(game_id)]))
 
     dedup = {}
-    for c in clips:
-        if not c.get('id') or not str(c.get('url', '')).startswith('https://'):
-            continue
-        clip_id = c['id']
-        if clip_id not in dedup or int(c.get('view_count') or 0) > int(dedup[clip_id].get('view_count') or 0):
-            dedup[clip_id] = c
-    ranked = sorted(dedup.values(), key=lambda c: int(c.get('view_count') or 0), reverse=True)[:150]
-    safe = [{k: c.get(k) for k in ('id', 'url', 'title', 'broadcaster_name', 'creator_name',
-                                  'view_count', 'created_at', 'duration', 'thumbnail_url',
-                                  'game_id', 'broadcaster_id')} for c in ranked]
+    provenance = {}
+    for label, clips in sources:
+        for clip in clips:
+            clip_id = clip.get('id')
+            if not clip_id or not str(clip.get('url', '')).startswith('https://'):
+                continue
+            provenance.setdefault(clip_id, []).append(label)
+            views = int(clip.get('view_count') or 0)
+            if clip_id not in dedup or views > int(dedup[clip_id].get('view_count') or 0):
+                dedup[clip_id] = clip
+    values = sorted(dedup.values(), key=lambda clip: int(clip.get('view_count') or 0), reverse=True)
+    # Reserve feed space for fresh and creator leads before filling by reach.
+    leaders = [
+        clip for clip in values if 'Twitch category · recent' in provenance[clip['id']]
+    ][:30] + [
+        clip for clip in values if any(label.startswith('Creator watchlist') for label in provenance[clip['id']])
+    ][:45]
+    ranked = list({clip['id']: clip for clip in leaders + values}.values())[:150]
+    keys = ('id', 'url', 'title', 'broadcaster_name', 'creator_name', 'view_count', 'created_at',
+            'duration', 'thumbnail_url', 'game_id', 'broadcaster_id', 'video_id', 'vod_offset')
+    safe = [
+        {**{key: clip.get(key) for key in keys},
+         'broadcaster_login': logins.get(str(clip.get('broadcaster_id'))),
+         'discovery_sources': list(dict.fromkeys(provenance[clip['id']]))}
+        for clip in ranked
+    ]
     return safe, {'status': 'ok', 'message': 'Fetched public Twitch clip metadata',
-                  'gameId': str(game_id), 'watchlistChecked': len(handles)}
+                  'gameId': str(game_id), 'watchlistChecked': len(users), 'watchlistRequested': len(handles)}
 
 
 def main():
+    FEED.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(FEED.read_text(encoding='utf-8')) if FEED.exists() else {}
     if not CLIENT_ID or not CLIENT_SECRET:
         existing.update({'status': 'setup_required',
