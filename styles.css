@@ -144,3 +144,27 @@ body { font-size: 15px; }
   .sidebar, .drawer, .clip-card, .nav-link { transition: none; }
   .clip-card:hover { transform: none; }
 }
+
+
+.production-section {
+  margin-top: 12px;
+  padding: 0 14px;
+  background: var(--raised);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+}
+.production-section summary {
+  padding: 13px 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+}
+.production-section[open] { padding-bottom: 14px; }
+.production-section[open] summary { margin-bottom: 8px; border-bottom: 1px solid var(--stroke); }
+.production-section .fineprint { margin: 8px 0 14px; }
+.production-section .field textarea { min-height: 84px; }
+.production-section .field :is(textarea, input, select) { background: var(--surface); }
+@media (max-width: 560px) {
+  .production-section .field :is(textarea, input, select) { font-size: 16px; }
+}
