@@ -264,9 +264,28 @@ function buildClipDraft(c) {
 const portraitKey='leonida-thumbnail-portrait';
 const artworkByClip=new Map();
 function readPortrait(){try{return localStorage.getItem(portraitKey);}catch{return null;}}
+function suggestThumbnailHeadline(c) {
+  const caption=(c.production?.chosenCaption||'').trim();
+  const question=caption.match(/^[^.!?\n]{3,30}\?/u)?.[0];
+  const compact=text=>text&&text.length<=30&&text.split(/\s+/u).length<=5;
+  if(compact(question))return question.toUpperCase();
+  const angle=selectedAngleText(c);
+  const chosen=angle.split(/[.!?\n]/u)[0]?.trim();
+  if(compact(chosen)&&!chosen.startsWith('Choose an angle'))return chosen.toUpperCase();
+  const context=[c.title,caption,angle].join(' ');
+  if(/frame\s*gen|\bfps\b|frame rate/i.test(context))return 'LOOKS FASTER?';
+  if(/surviv/i.test(context))return 'HOW DID THEY SURVIVE?';
+  if(/called it|predict|timing/i.test(context))return 'HE CALLED IT?';
+  if(/first time|first gameplay/i.test(context))return 'FIRST IMPRESSIONS';
+  const title=(c.title||'').trim();
+  if(compact(title))return title.toUpperCase();
+  return 'WHAT JUST HAPPENED?';
+}
 function thumbnailBuilder(c) {
   return `<div class="thumbnail-builder">
     <h4>Thumbnail B</h4>
+    <button class="btn btn-accent" data-action="prepare-thumbnail">Package thumbnail</button>
+    <p class="fineprint" id="thumbnailStatus" role="status">Uses your caption or angle, the clip image when available, and your saved portrait.</p>
     <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
     <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
     <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
@@ -276,10 +295,11 @@ function thumbnailBuilder(c) {
     <button class="btn btn-ghost" data-action="remove-portrait">Remove portrait</button>
   </div>`;
 }
-function loadThumbnailImage(src) {
+function loadThumbnailImage(src, remote=false) {
   return new Promise(resolve=>{
     if(!src){resolve(null);return;}
     const img=new Image();
+    if(remote)img.crossOrigin="anonymous";
     img.onload=()=>resolve(img);img.onerror=()=>resolve(null);img.src=src;
   });
 }
@@ -294,12 +314,14 @@ async function paintThumbnail(c) {
   const canvas=$('#thumbnailPreview');
   if(!canvas||!c)return;
   const [art,portrait,logo]=await Promise.all([
-    loadThumbnailImage(artworkByClip.get(c.id)),
+    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id)):loadThumbnailImage(safeUrl(c.thumbnail),true),
     loadThumbnailImage(readPortrait()),
     loadThumbnailImage(document.querySelector('link[rel=icon]')?.href)
   ]);
   if(!canvas.isConnected||findSelected()?.id!==c.id)return;
   const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+  const status=$('#thumbnailStatus');
+  if(status)status.textContent=art?(portrait?'Image and portrait ready.':'Image ready. Add your portrait once to reuse it.'):'Clip image unavailable for export. Choose an episode image below.';
   ctx.fillStyle='#332318';ctx.fillRect(0,0,w,h);
   if(art)drawCover(ctx,art,0,0,w,h);
   if(portrait)drawCover(ctx,portrait,850,90,410,610);
@@ -310,7 +332,7 @@ async function paintThumbnail(c) {
   for(let y=32;y<h;y+=10)for(let x=30;x<800;x+=10){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();}
   ctx.strokeStyle='#fff5de';ctx.lineWidth=5;ctx.strokeRect(18,18,w-36,h-36);
   if(logo)ctx.drawImage(logo,46,48,83,83);
-  const headline=(c.production?.thumbnailHeadline||'LOOKS FASTER?').trim().toUpperCase();
+  const headline=(c.production?.thumbnailHeadline||suggestThumbnailHeadline(c)).trim().toUpperCase();
   const words=headline.split(/\\s+/);const lines=[];
   while(words.length)lines.push(words.splice(0,words.length>2?2:1).join(' '));
   ctx.fillStyle='#fff5de';ctx.font='900 116px Impact, Arial Black, sans-serif';
@@ -430,6 +452,16 @@ document.addEventListener('click',async e=>{
    if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
+ case 'prepare-thumbnail':{
+   const c=findSelected();if(!c)break;
+   if(!c.production?.thumbnailHeadline?.trim()){
+     c.production={...c.production,thumbnailHeadline:suggestThumbnailHeadline(c),step:clipStep};
+     persist();
+     $('#production-thumbnailHeadline').value=c.production.thumbnailHeadline;
+   }
+   await paintThumbnail(c);
+   break;
+ }
  case 'download-thumbnail':{
    const c=findSelected();if(!c)break;
    await paintThumbnail(c);
@@ -450,6 +482,7 @@ document.addEventListener('click',async e=>{
    'Source: '+c.title+' — '+c.url,
    (draft.selectedAngle || c.hook)&&'Selected angle: '+selectedAngleText(c),
    draft.chosenCaption&&'Selected caption: '+draft.chosenCaption,
+   'Headline: '+(draft.thumbnailHeadline||suggestThumbnailHeadline(c)),
    draft.thumbnailBrief&&'Direction: '+draft.thumbnailBrief,
    'Use Thumbnail B: thin cream border, upright cream headline on the left, subtle print texture, small cobalt S in the upper-left, and Jack’s likeness on the right for most episodes. One clear focal point, readable at phone size.'
  ].filter(Boolean).join('\n'));}break}case 'export':exportJSON();break;case 'import':$('#importFile')?.click();break;case 'copy-clip-url':if(findSelected())copyToClipboard(findSelected().url);break;case 'save-rights':saveRights();break;case 'advance-clip':statusAdvance();break;case 'archive-clip':{let c=findSelected();if(c){c.status='archived';changed('Clip archived',c.title);toast('Archived')}}break;case 'delete-clip':{let c=findSelected();if(c&&confirm('Permanently remove this clip record?')){state.clips=state.clips.filter(x=>x.id!==c.id);closeDrawer();changed('Clip deleted',c.title);toast('Clip removed')}}break}}
