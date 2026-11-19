@@ -204,7 +204,7 @@ function closeModal(){$('#modalBackdrop').classList.remove('on');$('#modalConten
 function modalHeader(kicker,title){return `<div class="modal-head"><div><div class="eyebrow">${kicker}</div><h2>${title}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Close">✕</button></div>`}
 function modalAddClip(){showModal(`${modalHeader('QUICK INTAKE','Add a source clip')}<form id="clipForm"><div class="modal-body"><div class="field"><label>Original clip URL *</label><input name="url" type="url" placeholder="https://clips.twitch.tv/..." required maxlength="800"/></div><div class="field"><label>Clip title *</label><input name="title" placeholder="What happens in the clip?" required maxlength="220"/></div><div class="form-grid"><div class="field"><label>Streamer handle *</label><input name="streamer" required placeholder="Creator username" maxlength="90"/></div><div class="field"><label>Source platform</label><select name="platform"><option>Twitch</option><option>YouTube</option><option>Kick</option><option>Other</option></select></div><div class="field"><label>Current views</label><input name="views" type="number" min="0" max="999999999" value="0"/></div><div class="field"><label>Duration (seconds)</label><input name="duration" type="number" min="0" max="36000" value="30"/></div></div><div class="field"><label>Clip timestamp (optional)</label><input name="createdAt" type="datetime-local" /></div><p class="help-copy">New clips enter Inbox with rights unverified. You can add the clip to the queue, record permission, and track edit progress later.</p></div><div class="modal-foot"><button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">Add to discovery</button></div></form>`)}
 function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RADAR',isEdit?'Edit streamer':'Add streamer')}<form id="streamerForm"><input type="hidden" name="id" value="${esc(s?.id||'')}"/><div class="modal-body"><div class="field"><label>Twitch username *</label><input name="handle" required maxlength="90" pattern="[A-Za-z0-9_]{2,90}" placeholder="e.g. summit1g" value="${esc(s?.handle||'')}" /></div><div class="field"><label>Display name</label><input name="name" maxlength="100" placeholder="Optional" value="${esc(s?.name||'')}"/></div><div class="field"><label>Priority</label><select name="priority"><option value="3" ${s?.priority===3?'selected':''}>Priority 1 · Top source</option><option value="2" ${s?.priority===2?'selected':''}>Priority 2 · Strong prospect</option><option value="1" ${!s||s?.priority===1?'selected':''}>Priority 3 · Monitor</option></select></div><div class="field"><label>Partnership / outreach notes</label><textarea name="notes" maxlength="1000" placeholder="Contact status, preferred genres, introductions, submission agreement...">${esc(s?.notes||'')}</textarea></div><p class="help-copy">This adds a creator to your radar only. It does not establish that they stream GTA VI or grant permission to use their footage.</p></div><div class="modal-foot">${isEdit?`<button class="btn btn-danger" type="button" data-remove-streamer="${esc(s.id)}">Remove</button>`:''}<button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">${isEdit?'Save creator':'Add to watchlist'}</button></div></form>`)}
-function openDrawer(id){clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
+function openDrawer(id){copiedThumbnailLink='';clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
 function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
 function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${k===current?'selected':''}>${esc(v)}</option>`).join('')}
 const clipStepTitles=['Watch','Write','Package','Publish'];
@@ -288,7 +288,7 @@ function thumbnailBuilder(c) {
   return `<div class="thumbnail-builder">
     <h4>Thumbnail B</h4>
     <div class="drawer-actions">
-      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy clip link</button>
+      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy 1080p image link</button>
       <button class="btn btn-accent" data-action="paste-thumbnail-link">Paste &amp; make thumbnail</button>
     </div>
     <div class="field"><label for="thumbnailSourceLink">Clip, video, or image link</label><input id="thumbnailSourceLink" type="url" placeholder="Paste a clip link or a direct video or image URL"/></div>
@@ -327,16 +327,19 @@ function loadClipArtwork(source) {
   if(!source)return Promise.resolve(null);
   if(!clipArtworkCache.has(source)){
     const original=loadThumbnailImage(source,true);
-    let preferred=Promise.resolve(null);
+    const versions=[original];
     try{
       const url=new URL(source);
       if(/(?:^|\.)twitch\.tv$/i.test(url.hostname)&&/-preview-\d+x\d+\.(?:jpg|jpeg|png)$/i.test(url.pathname)){
-        url.pathname=url.pathname.replace(/-preview-\d+x\d+(\.[^.]+)$/i,'-preview-1280x720$1');
-        if(url.href!==source)preferred=loadThumbnailImage(url.href,true);
+        const path=url.pathname;
+        for(const size of ['1920x1080','1280x720']){
+          url.pathname=path.replace(/-preview-\d+x\d+(\.[^.]+)$/i,'-preview-'+size+'$1');
+          if(url.href!==source)versions.push(loadThumbnailImage(url.href,true));
+        }
       }
     }catch{}
-    clipArtworkCache.set(source,Promise.all([preferred,original]).then(([larger,standard])=>
-      larger&&(!standard||larger.naturalWidth>standard.naturalWidth)?larger:standard));
+    clipArtworkCache.set(source,Promise.all(versions).then(images=>images.filter(Boolean)
+      .sort((a,b)=>b.naturalWidth*b.naturalHeight-a.naturalWidth*a.naturalHeight)[0]||null));
   }
   return clipArtworkCache.get(source);
 }
@@ -603,13 +606,30 @@ document.addEventListener('click',async e=>{
  }
  case 'copy-thumbnail-link':{
    const c=findSelected();
-   if(c){copiedThumbnailLink=c.url;await copyToClipboard(c.url);}
+   if(!c)break;
+   const status=$('#thumbnailStatus');
+   if(status)status.textContent='Checking for a 1080p source…';
+   const source=artworkByClip.get(c.id);
+   const image=source?.startsWith('https:')?await loadThumbnailImage(source,true):await loadClipArtwork(safeUrl(c.thumbnail));
+   if(findSelected()?.id!==c.id||!status?.isConnected)break;
+   if(!image||image.naturalWidth<1920||image.naturalHeight<1080){
+     copiedThumbnailLink='';
+     status.textContent=image
+       ? 'No 1080p image link available ('+image.naturalWidth+' × '+image.naturalHeight+'). Paste a direct 1080p video or image link, or choose a 1080p video file.'
+       : 'No 1080p image link available. Use a direct video or image link, or choose a video file.';
+     break;
+   }
+   copiedThumbnailLink=image.src;
+   $('#thumbnailSourceLink').value=image.src;
+   status.textContent='1080p image link ready. Select Paste & make thumbnail.';
+   await copyToClipboard(image.src);
    break;
  }
  case 'paste-thumbnail-link':{
    const c=findSelected(),input=$('#thumbnailSourceLink');if(!c||!input)break;
    try{
-     const value=copiedThumbnailLink===c.url?copiedThumbnailLink:await navigator.clipboard.readText();
+     const value=input.value.trim()||copiedThumbnailLink||await navigator.clipboard.readText();
+     if(!value?.trim()){input.focus();toast('Paste an image or video link into the field.');break;}
      if(findSelected()?.id!==c.id||!input.isConnected)break;
      input.value=value.trim();
      await makeThumbnailFromLink(c,input.value);
