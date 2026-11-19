@@ -96,7 +96,7 @@ function updateConnection(){
   $('#statusSub').textContent=live?`Updated ${ago(feedMeta.generatedAt)}`:'Personal edits stay in this browser';
   $('#connectionPulse').classList.toggle('connected',live);
 }
-function render(){const labels={overview:'Overview',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings})[page]();}
+function render(){const labels={overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings})[page]();}
 function pageTop(kicker,title,sub,buttons=''){return `<div class="page-top"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${sub}</p></div>${buttons?`<div class="page-actions">${buttons}</div>`:''}</div>`}
 function btn(action,title,variant='ghost',extra=''){return `<button class="btn btn-${variant}" data-action="${action}" ${extra}>${title}</button>`}
 function empty(symbol,title,desc,action='',label=''){return `<div class="empty"><div class="empty-symbol">${symbol}</div><strong>${title}</strong><p>${desc}</p>${action?btn(action,label,'soft'):''}</div>`}
@@ -118,6 +118,7 @@ const productionFields = [
   ['permissionChecks', 'Permission checks to verify', 'List the approvals to check before reuse.'],
   ['point', 'Spinoza’s Point', 'Three sentences. Start with the laugh and leave the viewer with something to think about.'],
   ['captionOptions', 'Caption options', 'Draft several publish captions, one per line.'],
+  ['script', 'Script draft', 'Write your hook, setup, payoff, and take here.'],
   ['chosenCaption', 'Selected caption', 'Paste the caption you chose.'],
   ['thumbnailBrief', 'Thumbnail direction', 'Match the chosen angle and caption. Use one expressive frame, cobalt and cream, and a short readable line if needed.'],
 ];
@@ -162,11 +163,22 @@ function researchPrompt(c) {
   ].join('\n');
 }
 
-function renderOverview(){let ready=state.clips.filter(isCleared).length;let candidates=state.clips.filter(c=>score(c)>=50).length;const top=state.clips.slice().sort((a,b)=>score(b)-score(a)).slice(0,5);return `
-  <div class="overview-hero"><span class="tag accent">◉ &nbsp; GTA VI / LAUNCH OPERATIONS</span><h2>Find the moment<br/>before it trends.</h2><p>Find a clip, shortlist it, and take it from source research through your final edit.</p>${btn('nav-discovery','Browse clips →','accent')}${btn('add-clip','+ &nbsp; Add a clip','ghost')}</div>
-  <div class="metrics"><div class="metric"><div class="label">CLIPS DISCOVERED</div><div class="number">${num(state.clips.length)}</div><div class="description">Sources cataloged</div><div class="metric-glyph">◎</div></div><div class="metric"><div class="label">HIGH SIGNAL</div><div class="number">${num(candidates)}</div><div class="description">Scoring 50 or more</div><div class="metric-glyph">⌁</div></div><div class="metric"><div class="label">RIGHTS CLEARED</div><div class="number">${num(ready)}</div><div class="description">Documented per clip</div><div class="metric-glyph">◇</div></div><div class="metric"><div class="label">PUBLISHED</div><div class="number">${num(state.clips.filter(c=>c.status==='published').length)}</div><div class="description">Completed posts</div><div class="metric-glyph">↗</div></div></div>
-  <div class="section-grid"><section class="panel"><div class="panel-head"><h3>◈ &nbsp; Highest signal clips</h3><button class="table-action" data-action="nav-discovery">View all →</button></div>${top.length?`<div class="insight-list">${top.map(c=>`<div class="insight-item"><div><strong>${esc(short(c.title,60))}</strong><small>@${esc(c.streamer)} · ${formatCount(c.views)} views · ${ago(c.createdAt)}</small></div><div style="display:flex;gap:8px;align-items:center"><span class="score-bubble">${score(c)}</span><button class="table-action" data-open-clip="${esc(c.id)}">Open</button></div></div>`).join('')}</div>`:empty('◎','No clips in your radar','Refresh the public clip feed or paste a source URL worth tracking.','add-clip','+ Add your first clip')}</section>
-  <section class="panel"><div class="panel-head"><h3>In production</h3>${btn('nav-pipeline','Open pipeline','ghost')}</div><div class="panel-content">${productionQueue()}</div></section></div><p class="fineprint" style="margin-top:16px">Feed generated: ${esc(fmtDate(feedMeta.generatedAt))} · Private notes are stored on this browser only · Scores are editorial estimates, not predicted views.</p>`}
+function clipPitch(c) {
+  const title=(c.title||'').toLowerCase();
+  if (/compar|framegen|fps| on vs | before and after/.test(title)) return 'A comparison you can break down on screen.';
+  if (/first|reaction|thoughts|review/.test(title)) return 'A reaction you can use to open a bigger question.';
+  if (/surviv|fail|called it|crash| plan/.test(title)) return 'A setup and payoff you can turn into a short story.';
+  if (scoreParts(c).velocity >= 20) return 'Early traction makes this worth a quick watch for a distinct moment.';
+  return 'Watch for a moment that makes sense without the whole stream.';
+}
+function renderOverview() {
+  const picks=state.clips.filter(c=>c.status==='discovered').sort((a,b)=>score(b)-score(a)).slice(0,3);
+  return `
+    <div class="overview-hero desk-hero"><h1>Production desk</h1><p>Pick up an edit or find your next story.</p></div>
+    <section class="panel desk-section"><div class="panel-head"><h3>Continue editing</h3>${btn('nav-pipeline','Open pipeline','ghost')}</div><div class="panel-content">${productionQueue()}</div></section>
+    <section class="panel desk-section"><div class="panel-head"><h3>Three clips worth watching</h3>${btn('nav-discovery','Browse all','ghost')}</div>
+    <div class="desk-picks">${picks.map(c=>`<div><p class="desk-pitch">${esc(clipPitch(c))}</p>${clipCard(c)}</div>`).join('') || '<p class="fineprint">New clips will appear here when the feed updates.</p>'}</div></section>`;
+}
 function renderDiscovery(){return `${pageTop('01 / THE RADAR','Discovery','Sort fresh Twitch clips by early traction and editorial signal.',`${btn('add-clip','+ Add clip','ghost')}${btn('scan','↻ Refresh feed','accent')}`)}
   <div class="filterbar"><input class="search-input" id="clipSearch" type="search" placeholder="Search clip title or streamer..." value="${esc(filterText)}"/><select class="select-input" id="statusFilter"><option value="all">All statuses</option>${Object.entries(statusTitles).map(([k,v])=>`<option value="${k}" ${filterStatus===k?'selected':''}>${v}</option>`).join('')}</select><select class="select-input" id="sortFilter"><option value="score" ${sortMode==='score'?'selected':''}>Highest signal</option><option value="views" ${sortMode==='views'?'selected':''}>Most views</option><option value="newest" ${sortMode==='newest'?'selected':''}>Newest</option></select><span class="count">${sortedClips().length} results</span></div>
   ${state.clips.length?`<div class="clips" id="clipsContainer">${sortedClips().map(clipCard).join('')}</div>`: `<section class="panel">${empty('◎','Your discovery feed starts here','The hosted feed is awaiting Twitch setup. You can also add links manually.','add-clip','+ Add clip manually')}</section>`}`}
@@ -191,7 +203,7 @@ function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RAD
 function openDrawer(id){clipSelected=id;clipStep=0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
 function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
 function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${k===current?'selected':''}>${esc(v)}</option>`).join('')}
-const clipStepTitles=['Watch','Research & angles','Pick an angle','Record & edit','Caption & thumbnail','Publish'];
+const clipStepTitles=['Watch','Write','Package','Publish'];
 let clipStep=0;
 function showClipStep(focus=false){
   const drawer=$('#drawerContent');
@@ -223,26 +235,37 @@ function moveClipStep(delta){
   clipStep=next;
   showClipStep(true);
 }
+function selectedAngleText(c) {
+  const key=c.production?.selectedAngle;
+  return (key && c.production?.[key]) || c.hook || 'Choose an angle to guide your script, caption, and thumbnail.';
+}
 function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id===clipSelected);if(!c){closeDrawer();return}const r=clipRights(c),part=scoreParts(c),img=safeUrl(c.thumbnail);const check=c.checks||{};const pass=isCleared(c);const stages=stageOrder.map(k=>[k,statusTitles[k]]);const source=safeUrl(c.url);const embed=twitchClipEmbed(source);const drawer=$('#drawerContent');
  drawer.innerHTML=`<div class="drawer-top"><div><span class="eyebrow">CLIP DOSSIER / ${esc(c.platform)}</span><h2>${esc(c.title)}</h2><span class="fineprint">@${esc(c.streamer||'unknown')} · ${ago(c.createdAt)} · ${formatCount(c.views)} views</span></div><button class="icon-button" data-action="close-drawer" aria-label="Close editor">✕</button></div><div class="drawer-body">
   <div class="clip-step-nav"><div><span id="clipStepCount" class="eyebrow"></span><h3 id="clipStepTitle" tabindex="-1"></h3></div></div>
   <section class="clip-step"><div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
   <div class="drawer-actions">${source?`<a class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(source)}">↗ Original clip</a>`:''}<button class="btn btn-ghost btn-sm" data-action="copy-clip-url">⧉ Copy link</button>${c.status==='discovered'?btn('shortlist-clip','Add to shortlist','accent'):tag(c.status)}</div>
   </section><section class="clip-step production-section"><div class="production-fields">
-    <button class="btn btn-soft" data-action="copy-research-prompt">Copy research prompt</button>
-    <button class="btn btn-ghost" data-action="import-research">Import research</button>
-    <p class="fineprint">Copy the request into ChatGPT, then import the reply to fill the brief, angles, and permission checks together.</p>
-    ${researchKeys.map(key=>productionField(c,key)).join('')}
-  </div></section>
-  <section class="clip-step production-section">
-  <div class="divider"></div><div class="subhead">Signal breakdown</div><div class="quick-steps">${Object.entries({velocity:'Early velocity',traction:'Total views',fresh:'Freshness',priority:'Creator priority',editorial:'Human rating'}).map(([k,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--dim)"><span>${v}</span><strong style="color:var(--ink)">+${part[k]}</strong></div>`).join('')}</div>
-  <div class="divider"></div><div class="subhead">Editorial evaluation</div><div class="field"><label>Human rating (0–5) — creativity, surprise, watchability</label><select data-clip-field="rating">${[0,1,2,3,4,5].map(i=>`<option value="${i}" ${Number(c.rating||0)===i?'selected':''}>${i} ${['· Not reviewed','· Weak','· Below average','· Solid','· Strong','· Exceptional'][i]}</option>`).join('')}</select></div><div class="field"><label>Angle / video hook</label><textarea data-clip-field="hook" placeholder="What makes this compelling, in one sentence?">${esc(c.hook||'')}</textarea></div>
-  </section><section class="clip-step production-section"><div class="field"><label>Current production stage</label><select data-clip-field="status">${optionList([...stages,['archived','Archived']],c.status||'discovered')}</select></div>${!pass?`<div class="info-ribbon">Publishing and production approval are blocked until this clip has adequate permission evidence or a documented legal basis.</div>`:''}<div class="field"><label>Editor / assigned person</label><input data-clip-field="editor" value="${esc(c.editor||'')}" placeholder="Editor name"/></div><div class="field"><label>Original commentary or transformative value</label><textarea data-clip-field="valueAdd" placeholder="Explain the context, analysis, storytelling or original contribution.">${esc(c.valueAdd||'')}</textarea></div>
-  <div class="check-row">${[['hook','Hook written'],['captions','Captions checked'],['vertical','9:16 composition'],['commentary','Original value added'],['credit','Creator credited'],['quality','Final QC complete']].map(([k,t])=>`<label class="check-item"><input type="checkbox" data-check-field="${k}" ${check[k]?'checked':''}/> ${t}</label>`).join('')}</div>
-  </section><section class="clip-step production-section"><div class="production-fields">
+    <div class="angle-grid">${['angle1','angle2','angle3'].map(key=>`<article class="angle-card">${productionField(c,key)}<button type="button" class="btn btn-soft" data-use-angle="${key}" aria-pressed="${c.production?.selectedAngle===key}">${c.production?.selectedAngle===key?'Selected':'Use this angle'}</button></article>`).join('')}</div>
+    <p class="fineprint" data-angle-context>${esc(selectedAngleText(c))}</p>
+    ${productionField(c,'script')}
+    <details class="production-section"><summary>Research &amp; Spinoza’s Point</summary>
+      <button class="btn btn-soft" data-action="copy-research-prompt">Copy research prompt</button>
+      <button class="btn btn-ghost" data-action="import-research">Import research</button>
+      ${['brief','point','permissionChecks'].map(key=>productionField(c,key)).join('')}
+    </details>
+    <details class="production-section"><summary>Editing notes</summary>
+      <div class="field"><label>Angle / video hook</label><textarea data-clip-field="hook">${esc(c.hook||'')}</textarea></div>
+      <div class="field"><label>Human rating (0–5)</label><select data-clip-field="rating">${[0,1,2,3,4,5].map(v=>`<option value="${v}" ${Number(c.rating||0)===v?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label>Editor</label><input data-clip-field="editor" value="${esc(c.editor||'')}"/></div>
+      <div class="field"><label>Original commentary</label><textarea data-clip-field="valueAdd">${esc(c.valueAdd||'')}</textarea></div>
+      <div class="check-row">${[['hook','Hook written'],['captions','Captions checked'],['vertical','9:16 composition'],['commentary','Original value added'],['credit','Creator credited'],['quality','Final QC complete']].map(([k,t])=>`<label class="check-item"><input type="checkbox" data-check-field="${k}" ${check[k]?'checked':''}/> ${t}</label>`).join('')}</div>
+    </details>
+  </div></section><section class="clip-step production-section"><div class="production-fields">
+    <p class="fineprint" data-angle-context>${esc(selectedAngleText(c))}</p>
+    <button class="btn btn-soft" data-action="copy-caption-brief">Copy caption prompt</button>
     ${['captionOptions','chosenCaption','thumbnailBrief'].map(key=>productionField(c,key)).join('')}
     <button class="btn btn-soft" data-action="copy-thumbnail-brief">Copy thumbnail brief</button>
-  </div></section><section class="clip-step production-section"><details class="production-section"><summary>Rights record</summary><div class="field"><label>Authorization status</label><select id="rightStatus">${optionList([['unknown','Unknown / unverified'],['requested','Permission requested'],['granted','Creator granted permission'],['denied','Denied / do not use'],['own','Owned footage'],['other_basis','Other documented legal basis']],r.status||'unknown')}</select></div><div class="field"><label>Evidence / approval reference</label><input id="rightEvidence" value="${esc(r.evidence||'')}" placeholder="Link to agreement, DM record, email reference..."/></div><div class="field"><label>Scope / allowed platforms</label><input id="rightScope" value="${esc(r.scope||'')}" placeholder="e.g. TikTok, YouTube Shorts, Instagram; non-exclusive" /></div><div class="field"><label>Permission notes / rationale</label><textarea id="rightNote" placeholder="Terms, limitations, expiry, or reasoning for other legal basis...">${esc(r.note||'')}</textarea></div><button class="btn btn-soft" data-action="save-rights">Save rights record</button><div class="fineprint" style="margin-top:10px">${r.confirmedAt?'Last documented: '+esc(fmtDate(r.confirmedAt)):'No clearance documented yet.'}</div></details><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
+  </div></section><section class="clip-step production-section"><div class="field"><label>Current production stage</label><select data-clip-field="status">${optionList([...stages,['archived','Archived']],c.status||'discovered')}</select></div>${!pass?`<p class="fineprint">Record permissions in the rights section before advancing into production.</p>`:''}<details class="production-section"><summary>Rights record</summary><div class="field"><label>Authorization status</label><select id="rightStatus">${optionList([['unknown','Unknown / unverified'],['requested','Permission requested'],['granted','Creator granted permission'],['denied','Denied / do not use'],['own','Owned footage'],['other_basis','Other documented legal basis']],r.status||'unknown')}</select></div><div class="field"><label>Evidence / approval reference</label><input id="rightEvidence" value="${esc(r.evidence||'')}" placeholder="Link to agreement, DM record, email reference..."/></div><div class="field"><label>Scope / allowed platforms</label><input id="rightScope" value="${esc(r.scope||'')}" placeholder="e.g. TikTok, YouTube Shorts, Instagram; non-exclusive" /></div><div class="field"><label>Permission notes / rationale</label><textarea id="rightNote" placeholder="Terms, limitations, expiry, or reasoning for other legal basis...">${esc(r.note||'')}</textarea></div><button class="btn btn-soft" data-action="save-rights">Save rights record</button><div class="fineprint" style="margin-top:10px">${r.confirmedAt?'Last documented: '+esc(fmtDate(r.confirmedAt)):'No clearance documented yet.'}</div></details><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
   </div><footer class="clip-step-footer"><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
  showClipStep();
 }
@@ -260,6 +283,16 @@ function route(name){page=name;closeDrawer();$('#sidebar').classList.remove('mob
 
 // Event delegation: supports dynamically rendered views, touch controls, and accessible buttons.
 document.addEventListener('click',async e=>{
+  const angleButton=e.target.closest('[data-use-angle]');
+  if(angleButton){
+    const c=findSelected(), key=angleButton.dataset.useAngle;
+    if(!c || !['angle1','angle2','angle3'].includes(key))return;
+    if(!c.production?.[key]?.trim()){toast('Add or import this angle first.',true);return;}
+    c.production={...c.production,selectedAngle:key};
+    changed('Angle selected',c.title);
+    return;
+  }
+
  const nav=e.target.closest('[data-page]');if(nav){route(nav.dataset.page);return}
  const open=e.target.closest('[data-open-clip]');if(open){openDrawer(open.dataset.openClip);return}
  const edit=e.target.closest('[data-edit-streamer]');if(edit){modalStreamer(state.streamers.find(s=>s.id===edit.dataset.editStreamer));return}
@@ -289,13 +322,20 @@ document.addEventListener('click',async e=>{
    break;
  }
  case 'copy-research-prompt':{const c=findSelected();if(c)await copyToClipboard(researchPrompt(c));break}
+ case 'copy-caption-brief':{const c=findSelected();if(c)await copyToClipboard([
+   'Write three short caption options in Spinoza’s voice for this video.',
+   'Source: '+c.title+' — '+c.url,
+   'Angle: '+selectedAngleText(c),
+   c.production?.script&&'Script: '+c.production.script,
+   'Use plain language and a little humor. Avoid claiming facts the script does not establish.'
+ ].filter(Boolean).join('\n'));break}
  case 'copy-thumbnail-brief':{const c=findSelected();if(c){const draft=c.production||{};await copyToClipboard([
    'Create a thumbnail for Spinoza’s GTA VI coverage.',
    'Source: '+c.title+' — '+c.url,
-   c.hook&&'Selected angle: '+c.hook,
+   (draft.selectedAngle || c.hook)&&'Selected angle: '+selectedAngleText(c),
    draft.chosenCaption&&'Selected caption: '+draft.chosenCaption,
    draft.thumbnailBrief&&'Direction: '+draft.thumbnailBrief,
-   'Brand: cobalt and cream, one clear focal point, readable at phone size. Avoid red arrows and exaggerated clickbait.'
+   'Use Thumbnail B: thin cream border, upright cream headline on the left, subtle print texture, small cobalt S in the upper-left, and Jack’s likeness on the right for most episodes. One clear focal point, readable at phone size.'
  ].filter(Boolean).join('\n'));}break}case 'export':exportJSON();break;case 'import':$('#importFile')?.click();break;case 'copy-clip-url':if(findSelected())copyToClipboard(findSelected().url);break;case 'save-rights':saveRights();break;case 'advance-clip':statusAdvance();break;case 'archive-clip':{let c=findSelected();if(c){c.status='archived';changed('Clip archived',c.title);toast('Archived')}}break;case 'delete-clip':{let c=findSelected();if(c&&confirm('Permanently remove this clip record?')){state.clips=state.clips.filter(x=>x.id!==c.id);closeDrawer();changed('Clip deleted',c.title);toast('Clip removed')}}break}}
 });
 document.addEventListener('submit',e=>{
