@@ -282,15 +282,23 @@ body { font-size: 15px; }
   .clip-step-buttons { gap: 4px; }
   .clip-step-buttons .btn { padding-inline: 9px; }
 }
-.clip-step-buttons {
-  position: fixed;
-  z-index: 5;
-  bottom: max(14px, env(safe-area-inset-bottom));
-  right: max(16px, calc((100% - 1120px) / 2));
-  padding: 6px;
-  background: var(--surface);
-  border: 1px solid var(--stroke);
-  border-radius: 15px;
-  box-shadow: var(--card-shadow);
+/* Keep controls in their own row outside the scrolling content. */
+#drawerContent {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
 }
-.drawer-body { padding-bottom: 92px; }
+#drawerContent .drawer-body {
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 24px;
+  scrollbar-gutter: stable;
+}
+.clip-step-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--stroke);
+  padding: 10px max(16px, calc((100% - 1120px) / 2)) max(10px, env(safe-area-inset-bottom));
+  background: var(--surface);
+}

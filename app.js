@@ -201,7 +201,7 @@ function showClipStep(focus=false){
   $('#clipStepBack').disabled=clipStep===0;
   $('#clipStepNext').textContent=clipStep===clipStepTitles.length-1?'Done':'Next →';
   if(focus){
-    $('#clipDrawer').scrollTop=0;
+    $('#drawerContent .drawer-body').scrollTop=0;
     $('#clipStepTitle').focus({preventScroll:true});
   }
 }
@@ -224,7 +224,7 @@ function moveClipStep(delta){
 }
 function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id===clipSelected);if(!c){closeDrawer();return}const r=clipRights(c),part=scoreParts(c),img=safeUrl(c.thumbnail);const check=c.checks||{};const pass=isCleared(c);const stages=stageOrder.map(k=>[k,statusTitles[k]]);const source=safeUrl(c.url);const embed=twitchClipEmbed(source);const drawer=$('#drawerContent');
  drawer.innerHTML=`<div class="drawer-top"><div><span class="eyebrow">CLIP DOSSIER / ${esc(c.platform)}</span><h2>${esc(c.title)}</h2><span class="fineprint">@${esc(c.streamer||'unknown')} · ${ago(c.createdAt)} · ${formatCount(c.views)} views</span></div><button class="icon-button" data-action="close-drawer" aria-label="Close editor">✕</button></div><div class="drawer-body">
-  <div class="clip-step-nav"><div><span id="clipStepCount" class="eyebrow"></span><h3 id="clipStepTitle" tabindex="-1"></h3></div><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></div>
+  <div class="clip-step-nav"><div><span id="clipStepCount" class="eyebrow"></span><h3 id="clipStepTitle" tabindex="-1"></h3></div></div>
   <section class="clip-step"><div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
   <div class="drawer-actions">${source?`<a class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(source)}">↗ Original clip</a>`:''}<button class="btn btn-ghost btn-sm" data-action="copy-clip-url">⧉ Copy link</button>${c.status==='discovered'?btn('shortlist-clip','Add to shortlist','accent'):tag(c.status)}</div>
   </section><section class="clip-step production-section"><div class="production-fields">
@@ -243,7 +243,7 @@ function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id
     ${['captionOptions','chosenCaption','thumbnailBrief'].map(key=>productionField(c,key)).join('')}
     <button class="btn btn-soft" data-action="copy-thumbnail-brief">Copy thumbnail brief</button>
   </div></section><section class="clip-step production-section"><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
-  </div>`;
+  </div><footer class="clip-step-footer"><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
  showClipStep();
 }
 function findSelected(){return state.clips.find(c=>c.id===clipSelected)}
