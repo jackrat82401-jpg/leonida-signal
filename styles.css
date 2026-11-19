@@ -387,3 +387,11 @@ body { font-size: 15px; }
 [data-angle-context] { padding: 10px 12px; border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
 #production-script { min-height: 180px; }
 @media(max-width: 900px) { .desk-picks, .angle-grid { grid-template-columns: 1fr; } .desk-pitch { min-height: 0; } }
+
+.thumbnail-builder { margin-top: 24px; padding: 16px; border: 1px solid var(--stroke); border-radius: 12px; }
+.thumbnail-builder h4 { margin: 0 0 14px; }
+.thumbnail-inputs { display:flex; flex-wrap:wrap; gap:12px; }
+.thumbnail-inputs label { font-weight:700; min-width:0; }
+.thumbnail-inputs input { display:block; max-width:100%; margin-top:4px; }
+#thumbnailPreview { display:block; width:min(100%, 360px); height:auto; margin:12px 0; }
+.clip-step-footer { align-items:center; gap:8px; justify-content:space-between; }

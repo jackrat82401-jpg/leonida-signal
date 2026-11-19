@@ -43,8 +43,8 @@ async function load(){
 function persist(){
   const snap=JSON.stringify(state);
   if(snap===lastPersisted)return;
-  try{localStorage.setItem('leonida-signal-v1',snap);lastPersisted=snap}
-  catch{toast('Local storage unavailable. Export a JSON backup.',true)}
+  try{localStorage.setItem('leonida-signal-v1',snap);lastPersisted=snap;const label=$('#draftSaveState');if(label)label.textContent='Saved on this device'}
+  catch{const label=$('#draftSaveState');if(label)label.textContent='Save failed';toast('Local storage unavailable. Export a JSON backup.',true)}
 }
 function normalizePublicClip(c){
   if(!c||!c.id||!safeUrl(c.url))return null;
@@ -105,7 +105,7 @@ function rightsTag(c){const s=clipRights(c).status;const txt={unknown:'Unverifie
 function sortedClips(){let arr=state.clips.slice();if(filterText){let s=filterText.toLowerCase();arr=arr.filter(c=>(c.title+' '+c.streamer+' '+c.platform).toLowerCase().includes(s))}if(filterStatus!=='all')arr=arr.filter(c=>c.status===filterStatus);arr.sort((a,b)=>sortMode==='views'?b.views-a.views:sortMode==='newest'?new Date(b.createdAt)-new Date(a.createdAt):score(b)-score(a));return arr}
 function clipCard(c){const img=safeUrl(c.thumbnail);return `<article class="clip-card" data-open-clip="${esc(c.id)}" tabindex="0" role="button"><div class="clip-thumb ${img?'has-image':''}" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="thumb-fallback">VI</div><span class="clip-platform tag">${esc(c.platform||'Twitch')}</span><span class="clip-duration">${duration(c.duration)}</span></div><div class="clip-info"><h3>${esc(c.title)}</h3><div class="clip-byline"><span>@${esc(c.streamer||'unknown')}</span><span>${ago(c.createdAt)}</span></div><div class="clip-card-bottom"><span class="score-pill">${score(c)}<small>/ 100 SIGNAL</small></span>${rightsTag(c)}</div></div></article>`}
 function productionQueue() {
-  const active = state.clips.filter(c => !['discovered', 'published', 'archived'].includes(c.status));
+  const active = state.clips.filter(c => !['published', 'archived'].includes(c.status) && (c.status!=='discovered'||c.production?.brief||c.production?.script));
   if (!active.length) return '<p class="fineprint">Open a clip and select Add to shortlist to start a project.</p>';
   return active.slice(0, 5).map(c => `<div class="insight-item"><div><strong>${esc(short(c.title, 56))}</strong>${tag(c.status)}</div><button class="table-action" data-open-clip="${esc(c.id)}">Continue</button></div>`).join('');
 }
@@ -119,6 +119,7 @@ const productionFields = [
   ['point', 'Spinoza’s Point', 'Three sentences. Start with the laugh and leave the viewer with something to think about.'],
   ['captionOptions', 'Caption options', 'Draft several publish captions, one per line.'],
   ['script', 'Script draft', 'Write your hook, setup, payoff, and take here.'],
+  ['thumbnailHeadline','Thumbnail headline','LOOKS FASTER?'],
   ['chosenCaption', 'Selected caption', 'Paste the caption you chose.'],
   ['thumbnailBrief', 'Thumbnail direction', 'Match the chosen angle and caption. Use one expressive frame, cobalt and cream, and a short readable line if needed.'],
 ];
@@ -200,7 +201,7 @@ function closeModal(){$('#modalBackdrop').classList.remove('on');$('#modalConten
 function modalHeader(kicker,title){return `<div class="modal-head"><div><div class="eyebrow">${kicker}</div><h2>${title}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Close">✕</button></div>`}
 function modalAddClip(){showModal(`${modalHeader('QUICK INTAKE','Add a source clip')}<form id="clipForm"><div class="modal-body"><div class="field"><label>Original clip URL *</label><input name="url" type="url" placeholder="https://clips.twitch.tv/..." required maxlength="800"/></div><div class="field"><label>Clip title *</label><input name="title" placeholder="What happens in the clip?" required maxlength="220"/></div><div class="form-grid"><div class="field"><label>Streamer handle *</label><input name="streamer" required placeholder="Creator username" maxlength="90"/></div><div class="field"><label>Source platform</label><select name="platform"><option>Twitch</option><option>YouTube</option><option>Kick</option><option>Other</option></select></div><div class="field"><label>Current views</label><input name="views" type="number" min="0" max="999999999" value="0"/></div><div class="field"><label>Duration (seconds)</label><input name="duration" type="number" min="0" max="36000" value="30"/></div></div><div class="field"><label>Clip timestamp (optional)</label><input name="createdAt" type="datetime-local" /></div><p class="help-copy">New clips enter Inbox with rights unverified. You can add the clip to the queue, record permission, and track edit progress later.</p></div><div class="modal-foot"><button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">Add to discovery</button></div></form>`)}
 function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RADAR',isEdit?'Edit streamer':'Add streamer')}<form id="streamerForm"><input type="hidden" name="id" value="${esc(s?.id||'')}"/><div class="modal-body"><div class="field"><label>Twitch username *</label><input name="handle" required maxlength="90" pattern="[A-Za-z0-9_]{2,90}" placeholder="e.g. summit1g" value="${esc(s?.handle||'')}" /></div><div class="field"><label>Display name</label><input name="name" maxlength="100" placeholder="Optional" value="${esc(s?.name||'')}"/></div><div class="field"><label>Priority</label><select name="priority"><option value="3" ${s?.priority===3?'selected':''}>Priority 1 · Top source</option><option value="2" ${s?.priority===2?'selected':''}>Priority 2 · Strong prospect</option><option value="1" ${!s||s?.priority===1?'selected':''}>Priority 3 · Monitor</option></select></div><div class="field"><label>Partnership / outreach notes</label><textarea name="notes" maxlength="1000" placeholder="Contact status, preferred genres, introductions, submission agreement...">${esc(s?.notes||'')}</textarea></div><p class="help-copy">This adds a creator to your radar only. It does not establish that they stream GTA VI or grant permission to use their footage.</p></div><div class="modal-foot">${isEdit?`<button class="btn btn-danger" type="button" data-remove-streamer="${esc(s.id)}">Remove</button>`:''}<button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">${isEdit?'Save creator':'Add to watchlist'}</button></div></form>`)}
-function openDrawer(id){clipSelected=id;clipStep=0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
+function openDrawer(id){clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
 function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
 function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${k===current?'selected':''}>${esc(v)}</option>`).join('')}
 const clipStepTitles=['Watch','Write','Package','Publish'];
@@ -212,6 +213,7 @@ function showClipStep(focus=false){
   drawer.querySelector('.clip-step-nav').dataset.clipStep=clipStep===1?'research':'';
   $('#clipStepCount').textContent='Step '+(clipStep+1)+' of '+clipStepTitles.length;
   $('#clipStepBack').disabled=clipStep===0;
+  if(clipStep===2)paintThumbnail(findSelected());
   $('#clipStepNext').textContent=clipStep===clipStepTitles.length-1?'Done':'Next →';
   if(focus){
     $('#drawerContent .drawer-body').scrollTop=0;
@@ -233,8 +235,105 @@ function moveClipStep(delta){
     hero.append(play);
   }
   clipStep=next;
+  const c=findSelected();if(c&&(c.status!=='discovered'||c.production?.brief||c.production?.script)){c.production={...c.production,step:next};persist();}
   showClipStep(true);
 }
+function buildClipDraft(c) {
+  const title=c.title||'Untitled clip';
+  const comparison=/compar|framegen|fps| on vs |before and after/i.test(title);
+  const reaction=/first|reaction|thoughts|review/i.test(title);
+  const opening=comparison
+    ? 'What changed between the two examples, and could a viewer tell without the labels?'
+    : reaction ? 'What expectation did the creator bring in, and did the moment change it?' : 'What does the viewer expect just before the key moment?';
+  return {
+    brief: [
+      'Feed metadata lists this clip as “'+title+'” from '+(c.streamer||'an unlisted creator')+'.',
+      'The source platform is '+(c.platform||'unlisted')+' and the clip is '+(c.duration?Math.round(c.duration)+' seconds long':'missing duration metadata')+'.',
+      'The feed recorded '+formatCount(c.views||0)+' views when this metadata was loaded.',
+      'Use the title as a lead and check it against the original clip.',
+      'Unverified: the exact dialogue, surrounding stream context, and what happened on screen.',
+      'Open the source to check those points before recording.'
+    ].join(' '),
+    angle1: opening+' Open on a line or frame that supports the question. Land on one detail you can actually show.',
+    angle2: 'Retell the moment in three beats: setup, turn, payoff. Cut any setup the audience can infer from one frame. If the payoff is unclear without the stream, find the context first.',
+    angle3: 'Pick one assumption a viewer might make from the clip title. Pause on the frame that tests that assumption and explain what it does or does not show. End with a question a skeptical viewer could answer.',
+    point: 'Sometimes the title gives us a verdict before we have seen the evidence. A good clip can make us laugh and still leave room for a second look. What would you notice if you watched the same moment without reading the title?'
+  };
+}
+
+const portraitKey='leonida-thumbnail-portrait';
+const artworkByClip=new Map();
+function readPortrait(){try{return localStorage.getItem(portraitKey);}catch{return null;}}
+function thumbnailBuilder(c) {
+  return `<div class="thumbnail-builder">
+    <h4>Thumbnail B</h4>
+    <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
+    <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
+    <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
+    <p class="fineprint">Your portrait is reused on this browser. Episode images stay available while this tab is open.</p>
+    <canvas id="thumbnailPreview" width="1280" height="720" aria-label="Thumbnail B preview"></canvas>
+    <button class="btn btn-soft" data-action="download-thumbnail">Download PNG</button>
+    <button class="btn btn-ghost" data-action="remove-portrait">Remove portrait</button>
+  </div>`;
+}
+function loadThumbnailImage(src) {
+  return new Promise(resolve=>{
+    if(!src){resolve(null);return;}
+    const img=new Image();
+    img.onload=()=>resolve(img);img.onerror=()=>resolve(null);img.src=src;
+  });
+}
+function drawCover(ctx,img,x,y,w,h) {
+  const ratio=Math.max(w/img.width,h/img.height);
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+  const dw=img.width*ratio,dh=img.height*ratio;
+  ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  ctx.restore();
+}
+async function paintThumbnail(c) {
+  const canvas=$('#thumbnailPreview');
+  if(!canvas||!c)return;
+  const [art,portrait,logo]=await Promise.all([
+    loadThumbnailImage(artworkByClip.get(c.id)),
+    loadThumbnailImage(readPortrait()),
+    loadThumbnailImage(document.querySelector('link[rel=icon]')?.href)
+  ]);
+  if(!canvas.isConnected||findSelected()?.id!==c.id)return;
+  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+  ctx.fillStyle='#332318';ctx.fillRect(0,0,w,h);
+  if(art)drawCover(ctx,art,0,0,w,h);
+  if(portrait)drawCover(ctx,portrait,850,90,410,610);
+  const shade=ctx.createLinearGradient(0,0,920,0);
+  shade.addColorStop(0,'#241a13ef');shade.addColorStop(1,'#241a1300');
+  ctx.fillStyle=shade;ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#f7d5ab24';
+  for(let y=32;y<h;y+=10)for(let x=30;x<800;x+=10){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();}
+  ctx.strokeStyle='#fff5de';ctx.lineWidth=5;ctx.strokeRect(18,18,w-36,h-36);
+  if(logo)ctx.drawImage(logo,46,48,83,83);
+  const headline=(c.production?.thumbnailHeadline||'LOOKS FASTER?').trim().toUpperCase();
+  const words=headline.split(/\\s+/);const lines=[];
+  while(words.length)lines.push(words.splice(0,words.length>2?2:1).join(' '));
+  ctx.fillStyle='#fff5de';ctx.font='900 116px Impact, Arial Black, sans-serif';
+  lines.slice(0,4).forEach((line,k)=>ctx.fillText(line,55,245+k*109,740));
+}
+async function setThumbnailImage(input,c) {
+  const file=input.files?.[0];if(!file||!c)return;
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await loadThumbnailImage(url);
+    if(!img){toast('Choose a supported image.',true);return;}
+    const canvas=document.createElement('canvas');
+    const scale=Math.min(1,1280/Math.max(img.width,img.height));
+    canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    const image=canvas.toDataURL('image/webp',.87);
+    if(input.id==='thumbnailPortrait')localStorage.setItem(portraitKey,image);
+    else artworkByClip.set(c.id,image);
+    await paintThumbnail(c);
+  }catch{toast('Could not load or save that image.',true);}
+  finally{URL.revokeObjectURL(url);}
+}
+
 function selectedAngleText(c) {
   const key=c.production?.selectedAngle;
   return (key && c.production?.[key]) || c.hook || 'Choose an angle to guide your script, caption, and thumbnail.';
@@ -245,6 +344,7 @@ function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id
   <section class="clip-step"><div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
   <div class="drawer-actions">${source?`<a class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(source)}">↗ Original clip</a>`:''}<button class="btn btn-ghost btn-sm" data-action="copy-clip-url">⧉ Copy link</button>${c.status==='discovered'?btn('shortlist-clip','Add to shortlist','accent'):tag(c.status)}</div>
   </section><section class="clip-step production-section"><div class="production-fields">
+    <button class="btn btn-accent" data-action="draft-brief">Draft brief</button><p class="fineprint">Starts from clip metadata. Watch the source to verify the details.</p>
     <div class="angle-grid">${['angle1','angle2','angle3'].map(key=>`<article class="angle-card">${productionField(c,key)}<button type="button" class="btn btn-soft" data-use-angle="${key}" aria-pressed="${c.production?.selectedAngle===key}">${c.production?.selectedAngle===key?'Selected':'Use this angle'}</button></article>`).join('')}</div>
     <p class="fineprint" data-angle-context>${esc(selectedAngleText(c))}</p>
     ${productionField(c,'script')}
@@ -265,8 +365,9 @@ function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id
     <button class="btn btn-soft" data-action="copy-caption-brief">Copy caption prompt</button>
     ${['captionOptions','chosenCaption','thumbnailBrief'].map(key=>productionField(c,key)).join('')}
     <button class="btn btn-soft" data-action="copy-thumbnail-brief">Copy thumbnail brief</button>
+    ${thumbnailBuilder(c)}
   </div></section><section class="clip-step production-section"><div class="field"><label>Current production stage</label><select data-clip-field="status">${optionList([...stages,['archived','Archived']],c.status||'discovered')}</select></div>${!pass?`<p class="fineprint">Record permissions in the rights section before advancing into production.</p>`:''}<details class="production-section"><summary>Rights record</summary><div class="field"><label>Authorization status</label><select id="rightStatus">${optionList([['unknown','Unknown / unverified'],['requested','Permission requested'],['granted','Creator granted permission'],['denied','Denied / do not use'],['own','Owned footage'],['other_basis','Other documented legal basis']],r.status||'unknown')}</select></div><div class="field"><label>Evidence / approval reference</label><input id="rightEvidence" value="${esc(r.evidence||'')}" placeholder="Link to agreement, DM record, email reference..."/></div><div class="field"><label>Scope / allowed platforms</label><input id="rightScope" value="${esc(r.scope||'')}" placeholder="e.g. TikTok, YouTube Shorts, Instagram; non-exclusive" /></div><div class="field"><label>Permission notes / rationale</label><textarea id="rightNote" placeholder="Terms, limitations, expiry, or reasoning for other legal basis...">${esc(r.note||'')}</textarea></div><button class="btn btn-soft" data-action="save-rights">Save rights record</button><div class="fineprint" style="margin-top:10px">${r.confirmedAt?'Last documented: '+esc(fmtDate(r.confirmedAt)):'No clearance documented yet.'}</div></details><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
-  </div><footer class="clip-step-footer"><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
+  </div><footer class="clip-step-footer"><span id="draftSaveState" class="fineprint" role="status">Drafts stay on this device</span><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
  showClipStep();
 }
 function findSelected(){return state.clips.find(c=>c.id===clipSelected)}
@@ -322,6 +423,21 @@ document.addEventListener('click',async e=>{
    break;
  }
  case 'copy-research-prompt':{const c=findSelected();if(c)await copyToClipboard(researchPrompt(c));break}
+ case 'draft-brief':{
+   const c=findSelected();if(!c)break;
+   const draft=buildClipDraft(c);const existing=c.production||{};
+   const missing=Object.fromEntries(Object.entries(draft).filter(([key])=>!String(existing[key]||'').trim()));
+   if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
+   c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
+ }
+ case 'download-thumbnail':{
+   const c=findSelected();if(!c)break;
+   await paintThumbnail(c);
+   const canvas=$('#thumbnailPreview');if(!canvas||findSelected()?.id!==c.id)break;
+   canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='leonida-thumbnail.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},'image/png');
+   break;
+ }
+ case 'remove-portrait':{localStorage.removeItem(portraitKey);paintThumbnail(findSelected());break;}
  case 'copy-caption-brief':{const c=findSelected();if(c)await copyToClipboard([
    'Write three short caption options in Spinoza’s voice for this video.',
    'Source: '+c.title+' — '+c.url,
@@ -354,6 +470,7 @@ document.addEventListener('submit',e=>{
  }
  if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
 document.addEventListener('change',e=>{const t=e.target;
+ if(['thumbnailArtwork','thumbnailPortrait'].includes(e.target.id)&&e.target.type==='file'){setThumbnailImage(e.target,findSelected());return;}
  if(t.id==='statusFilter'){filterStatus=t.value;render();return}if(t.id==='sortFilter'){sortMode=t.value;render();return}
  if(t.id==='settingWindow'){state.settings.scanWindow=Number(t.value);changed();return}if(t.id==='settingMax'){state.settings.maxClips=Number(t.value);changed();return}if(t.id==='settingAuto'){state.settings.autoScan=t.value==='on';changed();return}
  if(t.id==='importFile'){importJSON(t.files[0]);t.value='';return}
@@ -364,7 +481,7 @@ document.addEventListener('input',e=>{
  const key=e.target.dataset.productionField;
  if(key&&productionFields.some(([field])=>field===key)){
    const c=findSelected();
-   if(c){c.production={...c.production,[key]:e.target.value};persist();}
+   if(c){c.production={...c.production,[key]:e.target.value,step:clipStep};persist();if(key==='thumbnailHeadline')paintThumbnail(c);}
    return;
  }
  if(e.target.id==='clipSearch'){filterText=e.target.value;const container=$('#clipsContainer');if(container){container.innerHTML=sortedClips().map(clipCard).join('');$('.filterbar .count').textContent=sortedClips().length+' results'}}});
