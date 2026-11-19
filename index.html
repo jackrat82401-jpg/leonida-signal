@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0e13" />
+  <meta name="description" content="Leonida Signal — GTA VI streamer clips discovery, rights and production control center." />
+  <title>LEONIDA SIGNAL — Clip Intelligence</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span>LS</span><i></i></div>
+        <div><strong>LEONIDA<span> / </span>SIGNAL</strong><small>CLIP INTELLIGENCE · GITHUB EDITION · V1.1</small></div>
+      </div>
+      <div class="side-label">WORKSPACE</div>
+      <nav class="nav" id="nav">
+        <button class="nav-link active" data-page="overview"><span class="nav-icon">◫</span> Overview <span class="nav-short">01</span></button>
+        <button class="nav-link" data-page="discovery"><span class="nav-icon">◎</span> Discovery <span class="nav-short" id="navDiscoveryCount">—</span></button>
+        <button class="nav-link" data-page="watchlist"><span class="nav-icon">♙</span> Watchlist <span class="nav-short" id="navStreamerCount">—</span></button>
+        <button class="nav-link" data-page="rights"><span class="nav-icon">◇</span> Rights desk <span class="nav-short" id="navRightsCount">—</span></button>
+        <button class="nav-link" data-page="pipeline"><span class="nav-icon">▦</span> Edit pipeline <span class="nav-short">→</span></button>
+        <button class="nav-link" data-page="settings"><span class="nav-icon">⚙</span> Settings</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="status-card"><div class="status-row"><span class="pulse" id="connectionPulse"></span><span id="connectionText">Checking scanner...</span></div><small id="statusSub">Twitch integration</small></div>
+        <div class="sidebar-meta">INDEPENDENT FAN MEDIA<br/>NOT AFFILIATED WITH ROCKSTAR GAMES</div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="menuBtn" aria-label="Open menu">☰</button>
+        <div class="top-left"><span class="top-eyebrow">CONTROL ROOM</span><span class="top-divider">/</span><span id="pageBreadcrumb">Overview</span></div>
+        <div class="top-actions"><span class="live-clock" id="timeDisplay">—</span><span class="header-dot"></span><button class="btn btn-ghost" id="exportBtn">⇩ <span class="hide-small">Backup</span></button><button class="btn btn-accent" id="quickScan">↻ <span class="hide-small">Refresh feed</span><span class="show-small">Refresh</span></button></div>
+      </header>
+      <main class="main" id="mainContent"></main>
+    </div>
+    <div class="drawer-scrim" id="drawerScrim"></div>
+    <aside class="drawer" id="clipDrawer" aria-label="Clip editor"><div id="drawerContent"></div></aside>
+    <div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modalContent"></div></div>
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
