@@ -288,7 +288,7 @@ function thumbnailBuilder(c) {
   return `<div class="thumbnail-builder">
     <h4>Thumbnail B</h4>
     <div class="drawer-actions">
-      <button class="btn btn-soft" data-action="copy-clip-url">Copy clip link</button>
+      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy clip link</button>
       <button class="btn btn-accent" data-action="paste-thumbnail-link">Paste &amp; make thumbnail</button>
     </div>
     <div class="field"><label for="thumbnailSourceLink">Clip, video, or image link</label><input id="thumbnailSourceLink" type="url" placeholder="Paste a clip link or a direct video or image URL"/></div>
@@ -372,6 +372,7 @@ async function paintThumbnail(c) {
   lines.slice(0,4).forEach((line,k)=>ctx.fillText(line,55,245+k*109,740));
 }
 const pendingFrames=new Map();
+let copiedThumbnailLink='';
 function waitForVideo(video,event,act) {
   return new Promise((resolve,reject)=>{
     function finish(error){
@@ -600,10 +601,15 @@ document.addEventListener('click',async e=>{
    if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
+ case 'copy-thumbnail-link':{
+   const c=findSelected();
+   if(c){copiedThumbnailLink=c.url;await copyToClipboard(c.url);}
+   break;
+ }
  case 'paste-thumbnail-link':{
    const c=findSelected(),input=$('#thumbnailSourceLink');if(!c||!input)break;
    try{
-     const value=await navigator.clipboard.readText();
+     const value=copiedThumbnailLink===c.url?copiedThumbnailLink:await navigator.clipboard.readText();
      if(findSelected()?.id!==c.id||!input.isConnected)break;
      input.value=value.trim();
      await makeThumbnailFromLink(c,input.value);
