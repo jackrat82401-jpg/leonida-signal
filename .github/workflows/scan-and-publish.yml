@@ -36,7 +36,7 @@ jobs:
       - name: Build public site artifact
         run: |
           mkdir -p public/data
-          cp index.html styles.css app.js .nojekyll public/
+          cp index.html styles.css app.js apple-touch-icon.png .nojekyll public/
           cp data/latest.json public/data/latest.json
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
