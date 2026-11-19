@@ -127,17 +127,20 @@ function productionField(c, key) {
   const [, label, prompt] = productionFields.find(field => field[0] === key);
   return `<div class="field"><label for="production-${key}">${label}</label><textarea id="production-${key}" data-production-field="${key}" placeholder="${prompt}">${esc(c.production?.[key] || '')}</textarea></div>`;
 }
-function twitchClipEmbed(source) {
+function twitchClipSlug(source) {
   try {
-    const url = new URL(source);
-    const path = url.pathname.split('/').filter(Boolean);
+    const url=new URL(source);
+    const path=url.pathname.split('/').filter(Boolean);
     let slug;
-    if (url.hostname === 'clips.twitch.tv' && path.length === 1) slug = path[0];
-    if (['twitch.tv', 'www.twitch.tv', 'm.twitch.tv'].includes(url.hostname) &&
-        path.length === 3 && path[1] === 'clip') slug = path[2];
-    if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug) || !location.hostname) return '';
-    return 'https://clips.twitch.tv/embed?' + new URLSearchParams({clip:slug,parent:location.hostname,autoplay:'false'});
-  } catch { return ''; }
+    if(url.hostname==='clips.twitch.tv'&&path.length===1)slug=path[0];
+    if(['twitch.tv','www.twitch.tv','m.twitch.tv'].includes(url.hostname)&&path.length===3&&path[1]==='clip')slug=path[2];
+    return slug&&/^[a-zA-Z0-9_-]+$/.test(slug)?slug:'';
+  }catch{return '';}
+}
+function twitchClipEmbed(source) {
+  const slug=twitchClipSlug(source);
+  if(!slug||!location.hostname)return '';
+  return 'https://clips.twitch.tv/embed?'+new URLSearchParams({clip:slug,parent:location.hostname,autoplay:'false'});
 }
 
 const researchKeys = ['brief', 'angle1', 'angle2', 'angle3', 'point', 'permissionChecks'];
@@ -284,14 +287,17 @@ function suggestThumbnailHeadline(c) {
 function thumbnailBuilder(c) {
   return `<div class="thumbnail-builder">
     <h4>Thumbnail B</h4>
-    <button class="btn btn-accent" data-action="prepare-thumbnail">Package thumbnail</button>
+    <div class="drawer-actions">
+      <button class="btn btn-soft" data-action="copy-clip-url">Copy clip link</button>
+      <button class="btn btn-accent" data-action="paste-thumbnail-link">Paste &amp; make thumbnail</button>
+    </div>
+    <div class="field"><label for="thumbnailSourceLink">Clip, video, or image link</label><input id="thumbnailSourceLink" type="url" placeholder="Paste a clip link or a direct video or image URL"/></div>
+    <button class="btn btn-soft" data-action="make-thumbnail-from-link">Make thumbnail</button>
     <p class="fineprint" id="thumbnailStatus" role="status">Uses your caption or angle, the clip image when available, and your saved portrait.</p>
     <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
     <details class="production-section"><summary>Use a sharper video frame</summary>
       <div class="field"><label for="thumbnailVideo">Video file</label><input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"/></div>
-      <div class="field"><label for="thumbnailVideoUrl">Or a direct video URL</label><input id="thumbnailVideoUrl" type="url" placeholder="https://…/clip.mp4"/></div>
-      <button class="btn btn-soft" data-action="fetch-thumbnail-frame">Fetch frame</button>
-      <p class="fineprint">Choose a video file to grab a frame automatically. Direct video URLs must allow browser access.</p>
+      <p class="fineprint">Choose a video file to grab a frame automatically.</p>
     </details>
     <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
     <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
@@ -338,7 +344,7 @@ async function paintThumbnail(c) {
   const canvas=$('#thumbnailPreview');
   if(!canvas||!c)return;
   const [art,portrait,logo]=await Promise.all([
-    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id)):loadClipArtwork(safeUrl(c.thumbnail)),
+    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id),artworkByClip.get(c.id).startsWith('https:')):loadClipArtwork(safeUrl(c.thumbnail)),
     loadThumbnailImage(readPortrait()),
     loadThumbnailImage(document.querySelector('link[rel=icon]')?.href)
   ]);
@@ -441,6 +447,45 @@ async function fetchThumbnailFrame(c,source,local=false) {
     if(local)URL.revokeObjectURL(source);
   }
 }
+function applySuggestedHeadline(c) {
+  if(c.production?.thumbnailHeadline?.trim())return;
+  c.production={...c.production,thumbnailHeadline:suggestThumbnailHeadline(c),step:clipStep};
+  persist();
+  const field=$('#production-thumbnailHeadline');
+  if(field)field.value=c.production.thumbnailHeadline;
+}
+
+async function makeThumbnailFromLink(c,value) {
+  const source=value||c.url;
+  let url;
+  try{url=new URL(source);}catch{}
+  if(url?.protocol!=='https:'||url.username||url.password){toast('Enter an HTTPS clip, video, or image link.',true);return;}
+  const slug=twitchClipSlug(url.href);
+  if(slug&&slug!==twitchClipSlug(c.url)){
+    toast('Open the clip that matches this Twitch link, then make its thumbnail.',true);
+    return;
+  }
+  if(slug||url.href===c.url){
+    applySuggestedHeadline(c);
+    await paintThumbnail(c);
+    return;
+  }
+  if(/\.(png|jpe?g|webp|avif)$/i.test(url.pathname)){
+    const status=$('#thumbnailStatus');
+    if(status)status.textContent='Loading linked image…';
+    const image=await loadThumbnailImage(url.href,true);
+    if(findSelected()?.id!==c.id)return;
+    if(!image){if(status?.isConnected)status.textContent='This image link does not allow browser access. Choose an episode image instead.';return;}
+    pendingFrames.delete(c.id);
+    artworkByClip.set(c.id,url.href);
+    applySuggestedHeadline(c);
+    await paintThumbnail(c);
+    return;
+  }
+  applySuggestedHeadline(c);
+  await fetchThumbnailFrame(c,url.href);
+}
+
 async function setThumbnailImage(input,c) {
   const file=input.files?.[0];if(!file||!c)return;
   const url=URL.createObjectURL(file);
@@ -555,22 +600,20 @@ document.addEventListener('click',async e=>{
    if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
- case 'fetch-thumbnail-frame':{
-   const c=findSelected();if(!c)break;
-   let url;
-   try{url=new URL($('#thumbnailVideoUrl').value.trim());}catch{}
-   if(url?.protocol!=='https:'||url.username||url.password){toast('Enter a direct HTTPS video URL.',true);break;}
-   await fetchThumbnailFrame(c,url.href);
+ case 'paste-thumbnail-link':{
+   const c=findSelected(),input=$('#thumbnailSourceLink');if(!c||!input)break;
+   try{
+     const value=await navigator.clipboard.readText();
+     if(findSelected()?.id!==c.id||!input.isConnected)break;
+     input.value=value.trim();
+     await makeThumbnailFromLink(c,input.value);
+   }catch{
+     if(input.isConnected){input.focus();toast('Paste your link into the field, then select Make thumbnail.');}
+   }
    break;
  }
- case 'prepare-thumbnail':{
-   const c=findSelected();if(!c)break;
-   if(!c.production?.thumbnailHeadline?.trim()){
-     c.production={...c.production,thumbnailHeadline:suggestThumbnailHeadline(c),step:clipStep};
-     persist();
-     $('#production-thumbnailHeadline').value=c.production.thumbnailHeadline;
-   }
-   await paintThumbnail(c);
+ case 'make-thumbnail-from-link':{
+   const c=findSelected();if(c)await makeThumbnailFromLink(c,$('#thumbnailSourceLink').value.trim());
    break;
  }
  case 'download-thumbnail':{
