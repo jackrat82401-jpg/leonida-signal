@@ -260,3 +260,37 @@ body { font-size: 15px; }
   .drawer .detail-hero { height: 210px; }
   .drawer .detail-hero.playing { height: 300px; }
 }
+
+
+.clip-step-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--stroke);
+}
+.clip-step-nav h3 { margin: 4px 0 0; font-size: clamp(19px, 2.4vw, 28px); }
+.clip-step-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+.clip-step[hidden] { display: none; }
+.drawer .clip-step.production-section { border: 0; }
+.clip-step .divider:first-child { display: none; }
+.clip-step .production-fields > .btn { margin-bottom: 5px; }
+@media (max-width: 560px) {
+  .clip-step-nav { gap: 8px; }
+  .clip-step-buttons { gap: 4px; }
+  .clip-step-buttons .btn { padding-inline: 9px; }
+}
+.clip-step-buttons {
+  position: fixed;
+  z-index: 5;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  right: max(16px, calc((100% - 1120px) / 2));
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: 15px;
+  box-shadow: var(--card-shadow);
+}
+.drawer-body { padding-bottom: 92px; }
