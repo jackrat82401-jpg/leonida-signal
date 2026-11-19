@@ -115,6 +115,7 @@ const productionFields = [
   ['angle1', 'Editorial angle 1', 'Three sentences on a distinct story you could tell.'],
   ['angle2', 'Editorial angle 2', 'Three sentences on a different way into the clip.'],
   ['angle3', 'Editorial angle 3', 'Three sentences on a third approach.'],
+  ['permissionChecks', 'Permission checks to verify', 'List the approvals to check before reuse.'],
   ['point', 'Spinoza’s Point', 'Three sentences. Start with the laugh and leave the viewer with something to think about.'],
   ['captionOptions', 'Caption options', 'Draft several publish captions, one per line.'],
   ['chosenCaption', 'Selected caption', 'Paste the caption you chose.'],
@@ -124,6 +125,28 @@ function productionField(c, key) {
   const [, label, prompt] = productionFields.find(field => field[0] === key);
   return `<div class="field"><label for="production-${key}">${label}</label><textarea id="production-${key}" data-production-field="${key}" placeholder="${prompt}">${esc(c.production?.[key] || '')}</textarea></div>`;
 }
+function twitchClipEmbed(source) {
+  try {
+    const url = new URL(source);
+    const path = url.pathname.split('/').filter(Boolean);
+    let slug;
+    if (url.hostname === 'clips.twitch.tv' && path.length === 1) slug = path[0];
+    if (['twitch.tv', 'www.twitch.tv', 'm.twitch.tv'].includes(url.hostname) &&
+        path.length === 3 && path[1] === 'clip') slug = path[2];
+    if (!slug || !/^[a-zA-Z0-9_-]+$/.test(slug) || !location.hostname) return '';
+    return 'https://clips.twitch.tv/embed?' + new URLSearchParams({clip:slug,parent:location.hostname,autoplay:'false'});
+  } catch { return ''; }
+}
+
+const researchKeys = ['brief', 'angle1', 'angle2', 'angle3', 'point', 'permissionChecks'];
+
+function parseResearch(raw, clip) {
+  const draft = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  if (!draft || draft.clipId !== clip.id ||
+      !researchKeys.every(key => typeof draft[key] === 'string' && draft[key].trim())) return null;
+  return Object.fromEntries(researchKeys.map(key => [key, draft[key].trim()]));
+}
+
 function researchPrompt(c) {
   return [
     'Prepare a Spinoza production brief for this Twitch clip.',
@@ -132,7 +155,10 @@ function researchPrompt(c) {
     'Original source: ' + c.url,
     'Write a 5–7 sentence factual brief. Verify against the original clip and available context. Flag unsupported details.',
     'Give three distinct editorial angles, three sentences each, and a three-sentence Spinoza’s Point. Use accessible humor and end with a thought the audience can explore for themselves.',
-    'List the permissions and attribution to verify before reuse, including any third-party audio or footage and the intended platforms.'
+    'List the permissions and attribution to verify before reuse, including any third-party audio or footage and the intended platforms.',
+    'If you cannot watch or verify the clip, say so explicitly. Separate facts, source claims and editorial hypotheses.',
+    'Return only valid JSON so Leonida Signal can import it. Each field must be a string. Use these exact keys and preserve the clipId exactly:',
+    JSON.stringify({clipId:c.id,...Object.fromEntries(researchKeys.map(key=>[key,'']))})
   ].join('\n');
 }
 
@@ -157,24 +183,25 @@ function renderSettings(){return `${pageTop('05 / OPERATIONS','Settings','Public
  <section class="setting-section"><h3>Private browser records</h3><p>Your permissions, notes, edit stages and watchlist changes are stored only in this browser using localStorage; they are NOT saved to GitHub or synced to another device. Export a JSON backup before switching phones or clearing browser data. This site has no accounts.</p><div style="display:flex;gap:8px;flex-wrap:wrap">${btn('export','⇩ Export JSON','ghost')}${btn('import','⇧ Import JSON','ghost')}</div><input id="importFile" type="file" accept=".json,application/json" style="display:none"/></section>
  <section class="setting-section"><h3>Scoring model · 100 points</h3><p>Estimated clip discovery signal, not a prediction of virality. Based on source view counts, age, streamer priority and your editorial review. Missing timestamps produce no freshness boost.</p><div class="quick-steps">${[['35','Early views per hour'],['20','Total traction'],['20','Freshness'],['10','Creator priority'],['15','Editorial assessment']].map(([a,b])=>`<div class="step"><span class="step-num">${a}</span><div><strong>${b}</strong></div></div>`).join('')}</div></section>
  <section class="setting-section"><h3>Publication safety</h3><p>Public clips do not automatically grant reposting rights. The pipeline blocks moving clips into production until the editor records a permission basis. GitHub Pages is a public static website, not a secure rights-record database.</p></section>`}
-function showModal(html){$('#modalContent').innerHTML=html;$('#modalBackdrop').classList.add('on');setTimeout(()=>$('#modalContent input:not([type=hidden])')?.focus(),20)}
+function showModal(html){$('#modalContent').innerHTML=html;$('#modalBackdrop').classList.add('on');setTimeout(()=>$('#modalContent input:not([type=hidden]), #researchJson')?.focus(),20)}
 function closeModal(){$('#modalBackdrop').classList.remove('on');$('#modalContent').innerHTML=''}
 function modalHeader(kicker,title){return `<div class="modal-head"><div><div class="eyebrow">${kicker}</div><h2>${title}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Close">✕</button></div>`}
 function modalAddClip(){showModal(`${modalHeader('QUICK INTAKE','Add a source clip')}<form id="clipForm"><div class="modal-body"><div class="field"><label>Original clip URL *</label><input name="url" type="url" placeholder="https://clips.twitch.tv/..." required maxlength="800"/></div><div class="field"><label>Clip title *</label><input name="title" placeholder="What happens in the clip?" required maxlength="220"/></div><div class="form-grid"><div class="field"><label>Streamer handle *</label><input name="streamer" required placeholder="Creator username" maxlength="90"/></div><div class="field"><label>Source platform</label><select name="platform"><option>Twitch</option><option>YouTube</option><option>Kick</option><option>Other</option></select></div><div class="field"><label>Current views</label><input name="views" type="number" min="0" max="999999999" value="0"/></div><div class="field"><label>Duration (seconds)</label><input name="duration" type="number" min="0" max="36000" value="30"/></div></div><div class="field"><label>Clip timestamp (optional)</label><input name="createdAt" type="datetime-local" /></div><p class="help-copy">New clips enter Inbox with rights unverified. You can add the clip to the queue, record permission, and track edit progress later.</p></div><div class="modal-foot"><button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">Add to discovery</button></div></form>`)}
 function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RADAR',isEdit?'Edit streamer':'Add streamer')}<form id="streamerForm"><input type="hidden" name="id" value="${esc(s?.id||'')}"/><div class="modal-body"><div class="field"><label>Twitch username *</label><input name="handle" required maxlength="90" pattern="[A-Za-z0-9_]{2,90}" placeholder="e.g. summit1g" value="${esc(s?.handle||'')}" /></div><div class="field"><label>Display name</label><input name="name" maxlength="100" placeholder="Optional" value="${esc(s?.name||'')}"/></div><div class="field"><label>Priority</label><select name="priority"><option value="3" ${s?.priority===3?'selected':''}>Priority 1 · Top source</option><option value="2" ${s?.priority===2?'selected':''}>Priority 2 · Strong prospect</option><option value="1" ${!s||s?.priority===1?'selected':''}>Priority 3 · Monitor</option></select></div><div class="field"><label>Partnership / outreach notes</label><textarea name="notes" maxlength="1000" placeholder="Contact status, preferred genres, introductions, submission agreement...">${esc(s?.notes||'')}</textarea></div><p class="help-copy">This adds a creator to your radar only. It does not establish that they stream GTA VI or grant permission to use their footage.</p></div><div class="modal-foot">${isEdit?`<button class="btn btn-danger" type="button" data-remove-streamer="${esc(s.id)}">Remove</button>`:''}<button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">${isEdit?'Save creator':'Add to watchlist'}</button></div></form>`)}
 function openDrawer(id){clipSelected=id;renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
-function closeDrawer(){clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
+function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
 function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${k===current?'selected':''}>${esc(v)}</option>`).join('')}
-function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id===clipSelected);if(!c){closeDrawer();return}const r=clipRights(c),part=scoreParts(c),img=safeUrl(c.thumbnail);const check=c.checks||{};const pass=isCleared(c);const stages=stageOrder.map(k=>[k,statusTitles[k]]);const source=safeUrl(c.url);const drawer=$('#drawerContent');
+function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id===clipSelected);if(!c){closeDrawer();return}const r=clipRights(c),part=scoreParts(c),img=safeUrl(c.thumbnail);const check=c.checks||{};const pass=isCleared(c);const stages=stageOrder.map(k=>[k,statusTitles[k]]);const source=safeUrl(c.url);const embed=twitchClipEmbed(source);const drawer=$('#drawerContent');
  const expanded=drawer.dataset.clipId===c.id?[...drawer.querySelectorAll('.production-section')].map(section=>section.open):null;
  drawer.dataset.clipId=c.id;
  drawer.innerHTML=`<div class="drawer-top"><div><span class="eyebrow">CLIP DOSSIER / ${esc(c.platform)}</span><h2>${esc(c.title)}</h2><span class="fineprint">@${esc(c.streamer||'unknown')} · ${ago(c.createdAt)} · ${formatCount(c.views)} views</span></div><button class="icon-button" data-action="close-drawer" aria-label="Close editor">✕</button></div><div class="drawer-body">
-  <div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div><div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
+  <div class="detail-hero" ${img?`style="background-image:url('${esc(img)}')"`:''}><div class="detail-gradient"></div>${embed?`<button class="btn btn-accent clip-play" data-action="play-clip">▶ Watch clip</button>`:''}<div class="detail-footer"><span class="tag accent">${part.total}/100 SIGNAL</span>${rightsTag(c)}</div></div>
   <div class="drawer-actions">${source?`<a class="btn btn-soft btn-sm" target="_blank" rel="noopener noreferrer" href="${esc(source)}">↗ Original clip</a>`:''}<button class="btn btn-ghost btn-sm" data-action="copy-clip-url">⧉ Copy link</button>${c.status==='discovered'?btn('shortlist-clip','Add to shortlist','accent'):tag(c.status)}</div>
   <details class="production-section" open><summary>Research &amp; angles</summary><div class="production-fields">
     <button class="btn btn-soft" data-action="copy-research-prompt">Copy research prompt</button>
-    <p class="fineprint">Use the original clip to verify the story. Paste your research here to keep it with the source.</p>
-    ${['brief','angle1','angle2','angle3','point'].map(key=>productionField(c,key)).join('')}
+    <button class="btn btn-ghost" data-action="import-research">Import research</button>
+    <p class="fineprint">Copy the request into ChatGPT, then import the reply to fill the brief, angles, and permission checks together.</p>
+    ${researchKeys.map(key=>productionField(c,key)).join('')}
   </div></details>
   <details class="production-section"><summary>Signal &amp; editorial rating</summary>
   <div class="divider"></div><div class="subhead">Signal breakdown</div><div class="quick-steps">${Object.entries({velocity:'Early velocity',traction:'Total views',fresh:'Freshness',priority:'Creator priority',editorial:'Human rating'}).map(([k,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--dim)"><span>${v}</span><strong style="color:var(--ink)">+${part[k]}</strong></div>`).join('')}</div>
@@ -210,6 +237,27 @@ document.addEventListener('click',async e=>{
  const remove=e.target.closest('[data-remove-streamer]');if(remove){const s=state.streamers.find(x=>x.id===remove.dataset.removeStreamer);if(s&&confirm('Remove @'+s.handle+' from the watchlist? Existing clips remain.')){state.streamers=state.streamers.filter(x=>x.id!==s.id);closeModal();changed('Creator removed',s.handle)}return}
  const action=e.target.closest('[data-action]')?.dataset.action;if(action){switch(action){case 'add-clip':modalAddClip();break;case 'add-streamer':modalStreamer();break;case 'scan':await scan();break;case 'close-modal':closeModal();break;case 'close-drawer':closeDrawer();break;case 'nav-discovery':route('discovery');break;case 'nav-pipeline':route('pipeline');break;
  case 'shortlist-clip':{const c=findSelected();if(c?.status==='discovered'){c.status='shortlisted';changed('Clip shortlisted',c.title);toast('Added to the pipeline')}break}
+ case 'play-clip':{
+   const c=findSelected(), embed=c&&twitchClipEmbed(c.url), hero=$('#drawerContent .detail-hero');
+   if(embed&&hero){
+     const frame=document.createElement('iframe');
+     frame.src=embed;
+     frame.title='Twitch clip: '+c.title;
+     frame.allowFullscreen=true;
+     hero.classList.add('playing');
+     hero.replaceChildren(frame);
+   }
+   break;
+ }
+ case 'import-research':{
+   if(findSelected())showModal(`${modalHeader('RESEARCH','Import research')}
+     <form id="researchImportForm"><div class="modal-body"><div class="field">
+     <label for="researchJson">Paste the JSON reply from ChatGPT</label>
+     <textarea required id="researchJson" rows="7"></textarea>
+     </div><p class="fineprint">Existing research fields on this clip will be replaced. Rights records and production notes are kept.</p></div>
+     <div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button><button class="btn btn-accent">Import research</button></div></form>`);
+   break;
+ }
  case 'copy-research-prompt':{const c=findSelected();if(c)await copyToClipboard(researchPrompt(c));break}
  case 'copy-thumbnail-brief':{const c=findSelected();if(c){const draft=c.production||{};await copyToClipboard([
    'Create a thumbnail for Spinoza’s GTA VI coverage.',
@@ -220,7 +268,21 @@ document.addEventListener('click',async e=>{
    'Brand: cobalt and cream, one clear focal point, readable at phone size. Avoid red arrows and exaggerated clickbait.'
  ].filter(Boolean).join('\n'));}break}case 'export':exportJSON();break;case 'import':$('#importFile')?.click();break;case 'copy-clip-url':if(findSelected())copyToClipboard(findSelected().url);break;case 'save-rights':saveRights();break;case 'advance-clip':statusAdvance();break;case 'archive-clip':{let c=findSelected();if(c){c.status='archived';changed('Clip archived',c.title);toast('Archived')}}break;case 'delete-clip':{let c=findSelected();if(c&&confirm('Permanently remove this clip record?')){state.clips=state.clips.filter(x=>x.id!==c.id);closeDrawer();changed('Clip deleted',c.title);toast('Clip removed')}}break}}
 });
-document.addEventListener('submit',e=>{if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
+document.addEventListener('submit',e=>{
+ if(e.target.id==='researchImportForm'){
+   e.preventDefault();
+   const c=findSelected();
+   if(!c)return;
+   let draft;
+   try{draft=parseResearch($('#researchJson').value,c)}catch{}
+   if(!draft){toast('Paste the full research JSON generated for this clip.',true);return;}
+   c.production={...c.production,...draft};
+   closeModal();
+   changed('Research imported',c.title);
+   toast('Research saved');
+   return;
+ }
+ if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
 document.addEventListener('change',e=>{const t=e.target;
  if(t.id==='statusFilter'){filterStatus=t.value;render();return}if(t.id==='sortFilter'){sortMode=t.value;render();return}
  if(t.id==='settingWindow'){state.settings.scanWindow=Number(t.value);changed();return}if(t.id==='settingMax'){state.settings.maxClips=Number(t.value);changed();return}if(t.id==='settingAuto'){state.settings.autoScan=t.value==='on';changed();return}
@@ -245,4 +307,5 @@ $('#quickScan').addEventListener('click',scan);
 const tick=()=>{$('#timeDisplay').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};tick();setInterval(tick,30000);
 setInterval(()=>{if(state.settings.autoScan&&!busy&&(!lastFeedRefresh||Date.now()-new Date(lastFeedRefresh).getTime()>30*60000))scan()},60000);
 load();
+
 

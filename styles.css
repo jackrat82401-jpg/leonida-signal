@@ -168,3 +168,25 @@ body { font-size: 15px; }
 @media (max-width: 560px) {
   .production-section .field :is(textarea, input, select) { font-size: 16px; }
 }
+
+
+.clip-play {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.detail-hero.playing {
+  height: auto;
+  min-height: 300px;
+  aspect-ratio: 16 / 9;
+  background: #111827 !important;
+}
+.detail-hero iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
