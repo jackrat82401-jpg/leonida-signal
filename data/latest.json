@@ -1,0 +1,81 @@
+{
+  "status": "setup_required",
+  "message": "Add TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in GitHub Actions secrets, then run this workflow.",
+  "generatedAt": null,
+  "game": "Grand Theft Auto VI",
+  "source": "Twitch API (not yet connected)",
+  "clips": [
+    {
+      "id": "CuriousBadEchidnaCoolStoryBro-g66TfyHbfF_r5vxZ",
+      "url": "https://clips.twitch.tv/CuriousBadEchidnaCoolStoryBro-g66TfyHbfF_r5vxZ",
+      "title": "How did they survive???",
+      "broadcaster_name": "CaseOh",
+      "creator_name": "Rawe492",
+      "duration": 36,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    },
+    {
+      "id": "BeautifulModernTermiteYouWHY-nEB5VffTKnvTR2UD",
+      "url": "https://clips.twitch.tv/BeautifulModernTermiteYouWHY-nEB5VffTKnvTR2UD",
+      "title": "He called it! The timing",
+      "broadcaster_name": "CaseOh",
+      "creator_name": "Rawe492",
+      "duration": 22,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    },
+    {
+      "id": "TubularAwkwardFrogPanicBasket-16J-tuUOS6Kxw8bS",
+      "url": "https://clips.twitch.tv/TubularAwkwardFrogPanicBasket-16J-tuUOS6Kxw8bS",
+      "title": "WTF is GTA, bro",
+      "broadcaster_name": "Kai Cenat",
+      "creator_name": "crmanojlive",
+      "duration": 30,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    },
+    {
+      "id": "EvilKindChamoisFreakinStinkin-_Q6h9MGvEezIzSw0",
+      "url": "https://clips.twitch.tv/EvilKindChamoisFreakinStinkin-_Q6h9MGvEezIzSw0",
+      "title": "First time playing GTA 6",
+      "broadcaster_name": "Jynxzi",
+      "creator_name": "alex1234vasilean",
+      "duration": 15,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    },
+    {
+      "id": "SpikyAlertCookieDuDudu-o9wrV5cBrwlNKB_5",
+      "url": "https://clips.twitch.tv/SpikyAlertCookieDuDudu-o9wrV5cBrwlNKB_5",
+      "title": "Kai plays GTA 6 first",
+      "broadcaster_name": "Kai Cenat",
+      "creator_name": "Navneesh13",
+      "duration": 60,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    },
+    {
+      "id": "SwissBenevolentRhinocerosRedCoat-_qn39IFUSFPG0nep",
+      "url": "https://clips.twitch.tv/SwissBenevolentRhinocerosRedCoat-_qn39IFUSFPG0nep",
+      "title": "W PLAN",
+      "broadcaster_name": "CaseOh",
+      "creator_name": "XxGamer_K1ngxX",
+      "duration": 48,
+      "view_count": 0,
+      "created_at": null,
+      "thumbnail_url": "",
+      "starter": true
+    }
+  ]
+}
