@@ -152,7 +152,7 @@ function updateConnection(){
   $('#statusSub').textContent=live?`Updated ${ago(feedMeta.generatedAt)}`:'Personal edits stay in this browser';
   $('#connectionPulse').classList.toggle('connected',live);
 }
-function render(){const labels={overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings',record:'Ready to Record',analytics:'Performance'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings,record:renderRecord,analytics:renderAnalytics})[page]();}
+function render(){const labels={ideas:'Video Ideas',overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings',record:'Ready to Record',analytics:'Performance'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({ideas:renderIdeas,overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings,record:renderRecord,analytics:renderAnalytics})[page]();}
 function pageTop(kicker,title,sub,buttons=''){return `<div class="page-top"><div><h1>${title}</h1><p>${sub}</p></div>${buttons?`<div class="page-actions">${buttons}</div>`:''}</div>`}
 function btn(action,title,variant='ghost',extra=''){return `<button class="btn btn-${variant}" data-action="${action}" ${extra}>${title}</button>`}
 function empty(symbol,title,desc,action='',label=''){return `<div class="empty"><div class="empty-symbol">${symbol}</div><strong>${title}</strong><p>${desc}</p>${action?btn(action,label,'soft'):''}</div>`}
@@ -231,6 +231,23 @@ function clipPitch(c) {
   if (/surviv|fail|called it|crash| plan/.test(title)) return 'A setup and payoff you can turn into a short story.';
   if (scoreParts(c).velocity >= 20) return 'Early traction makes this worth a quick watch for a distinct moment.';
   return 'Watch for a moment that makes sense without the whole stream.';
+}
+function renderIdeas(){
+  const standalone=[
+    ['The scoreboard is lying to you','Ever had the best stats on the team and still been the reason you lost?','Tell one story from your own ranked games. Show the decision the scoreboard missed.'],
+    ['Spinoza’s Court: Is save-scumming cheating?','Your honor, my client merely discovered the load button.','Argue both sides, give your ruling, and ask viewers where they draw the line.'],
+    ['What makes a game feel faster?','If I hide the FPS counter, can you still tell which one feels better?','Record two versions of the same route in a game you own. Give viewers a blind pick before the reveal.']
+  ];
+  const clips=state.clips.filter(c=>!['published','archived'].includes(c.status))
+    .sort((a,b)=>score(b)-score(a)).slice(0,6);
+  return pageTop('','Video Ideas','Pick a hook and decide what you want to say.')+
+    '<h2>Record on your own</h2><div class="r2-list">'+standalone.map(([title,hook,beat])=>
+      `<article class="r2-section"><h3>${esc(title)}</h3><p>“${esc(hook)}”</p><p>${esc(beat)}</p></article>`).join('')+'</div>'+
+    '<h2>From your clip feed</h2><div class="r2-list">'+(clips.length?clips.map((c,i)=>{
+      const angle=['angle1','angle2','angle3'][i%3];
+      const draft=c.production?.[angle]||buildClipDraft(c)[angle];
+      return `<article class="r2-section"><h3>${esc(c.title)}</h3><p class="fineprint">${esc(c.streamer||c.platform)} · ${['Comedy','Debate','Philosophy'][i%3]}</p><p>${esc(draft)}</p><button class="btn btn-soft" data-open-clip="${esc(c.id)}">Review source and develop idea</button></article>`;
+    }).join(''):'<p>Clip-based ideas appear here when your feed has clips.</p>')+'</div>';
 }
 function renderOverview() {
   const picks=state.clips.filter(c=>c.status==='discovered').sort((a,b)=>score(b)-score(a)).slice(0,3);
