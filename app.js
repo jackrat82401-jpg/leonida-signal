@@ -261,8 +261,8 @@ function closeModal(){$('#modalBackdrop').classList.remove('on');$('#modalConten
 function modalHeader(kicker,title){return `<div class="modal-head"><div><div class="eyebrow">${kicker}</div><h2>${title}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Close">✕</button></div>`}
 function modalAddClip(){showModal(`${modalHeader('QUICK INTAKE','Add a source clip')}<form id="clipForm"><div class="modal-body"><div class="field"><label>Original clip URL *</label><input name="url" type="url" placeholder="https://clips.twitch.tv/..." required maxlength="800"/></div><div class="field"><label>Clip title *</label><input name="title" placeholder="What happens in the clip?" required maxlength="220"/></div><div class="form-grid"><div class="field"><label>Streamer handle *</label><input name="streamer" required placeholder="Creator username" maxlength="90"/></div><div class="field"><label>Source platform</label><select name="platform"><option>Twitch</option><option>YouTube</option><option>Kick</option><option>Other</option></select></div><div class="field"><label>Current views</label><input name="views" type="number" min="0" max="999999999" value="0"/></div><div class="field"><label>Duration (seconds)</label><input name="duration" type="number" min="0" max="36000" value="30"/></div></div><div class="field"><label>Clip timestamp (optional)</label><input name="createdAt" type="datetime-local" /></div><p class="help-copy">New clips enter Inbox with rights unverified. You can add the clip to the queue, record permission, and track edit progress later.</p></div><div class="modal-foot"><button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">Add to discovery</button></div></form>`)}
 function modalStreamer(s){const isEdit=!!s;showModal(`${modalHeader('CREATOR RADAR',isEdit?'Edit streamer':'Add streamer')}<form id="streamerForm"><input type="hidden" name="id" value="${esc(s?.id||'')}"/><div class="modal-body"><div class="field"><label>Twitch username *</label><input name="handle" required maxlength="90" pattern="[A-Za-z0-9_]{2,90}" placeholder="e.g. summit1g" value="${esc(s?.handle||'')}" /></div><div class="field"><label>Display name</label><input name="name" maxlength="100" placeholder="Optional" value="${esc(s?.name||'')}"/></div><div class="field"><label>Priority</label><select name="priority"><option value="3" ${s?.priority===3?'selected':''}>Priority 1 · Top source</option><option value="2" ${s?.priority===2?'selected':''}>Priority 2 · Strong prospect</option><option value="1" ${!s||s?.priority===1?'selected':''}>Priority 3 · Monitor</option></select></div><div class="field"><label>Partnership / outreach notes</label><textarea name="notes" maxlength="1000" placeholder="Contact status, preferred genres, introductions, submission agreement...">${esc(s?.notes||'')}</textarea></div><p class="help-copy">This adds a creator to your radar only. It does not establish that they stream GTA VI or grant permission to use their footage.</p></div><div class="modal-foot">${isEdit?`<button class="btn btn-danger" type="button" data-remove-streamer="${esc(s.id)}">Remove</button>`:''}<button class="btn btn-ghost" type="button" data-action="close-modal">Cancel</button><button class="btn btn-accent" type="submit">${isEdit?'Save creator':'Add to watchlist'}</button></div></form>`)}
-function openDrawer(id,step){copiedThumbnailLink='';clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=step??(Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0);renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
-function closeDrawer(){$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
+function openDrawer(id,step){if(clipSelected&&clipSelected!==id)releaseCoverVideo(clipSelected);copiedThumbnailLink='';clipSelected=id;const clip=findSelected();const saved=clip?.production?.step;clipStep=step??(Number.isInteger(saved)&&saved>=0&&saved<clipStepTitles.length?saved:0);renderDrawer();$('#clipDrawer').classList.add('open');$('#drawerScrim').classList.add('on');document.body.style.overflow='hidden'}
+function closeDrawer(){if(clipSelected)releaseCoverVideo(clipSelected);$('#drawerContent .detail-hero iframe')?.remove();clipSelected=null;$('#clipDrawer').classList.remove('open');$('#drawerScrim').classList.remove('on');document.body.style.overflow=''}
 function optionList(items,current){return items.map(([k,v])=>`<option value="${esc(k)}" ${String(k)===String(current)?'selected':''}>${esc(v)}</option>`).join('')}
 const clipStepTitles=['Watch','Write','Package','Publish','Ready to Record'];
 let clipStep=0;
@@ -274,6 +274,12 @@ function showClipStep(focus=false){
   $('#clipStepCount').textContent='Step '+(clipStep+1)+' of '+clipStepTitles.length;
   $('#clipStepBack').disabled=clipStep===0;
   if(clipStep===2)paintThumbnail(findSelected());
+  if(clipStep===4){
+    const c=findSelected(),label=$('#recordCover');
+    if(c&&label)getCoverAssets(c.id).then(assets=>{
+      if(label.isConnected)label.textContent=coverLayouts[currentCoverLayout(c)]+' · '+(c.production?.thumbnailHeadline||suggestThumbnailHeadline(c))+(assets.main?.time!=null?' · Source '+coverTime(assets.main.time):'');
+    });
+  }
   $('#clipStepNext').textContent=clipStep===clipStepTitles.length-1?'Done':'Next →';
   if(focus){
     $('#drawerContent .drawer-body').scrollTop=0;
@@ -326,7 +332,6 @@ function buildClipDraft(c) {
 }
 
 const portraitKey='leonida-thumbnail-portrait';
-const artworkByClip=new Map();
 function readPortrait(){try{return localStorage.getItem(portraitKey);}catch{return null;}}
 function suggestThumbnailHeadline(c) {
   const caption=(c.production?.chosenCaption||'').trim();
@@ -345,28 +350,103 @@ function suggestThumbnailHeadline(c) {
   if(compact(title))return title.toUpperCase();
   return 'WHAT JUST HAPPENED?';
 }
+const coverLayouts = {portrait:'Spinoza leads', moment:'The moment leads', comparison:'Comparison leads'};
+const coverFilmstrips = new Map();
+const coverAssets = new Map();
+const coverPreviewTokens = new WeakMap();
+let coverDatabase;
+
+function coverStorage(mode, operation) {
+  coverDatabase ||= new Promise((resolve, reject)=>{
+    const request=indexedDB.open('leonida-covers',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('assets');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  }).catch(error=>{coverDatabase=null;throw error});
+  return coverDatabase.then(db=>new Promise((resolve,reject)=>{
+    const transaction=db.transaction('assets',mode);
+    const request=operation(transaction.objectStore('assets'));
+    transaction.oncomplete=()=>resolve(request.result);
+    transaction.onabort=()=>reject(transaction.error);
+  }));
+}
+async function getCoverAssets(id) {
+  if(!coverAssets.has(id)){
+    const stored=await coverStorage('readonly',store=>store.get(id)).catch(()=>null);
+    if(!coverAssets.has(id))coverAssets.set(id,stored||{});
+  }
+  return coverAssets.get(id);
+}
+async function setCoverAsset(c, slot, image) {
+  const assets=await getCoverAssets(c.id);
+  preparedCoverShare=null;
+  if(image)assets[slot]=image;else delete assets[slot];
+  try{
+    await coverStorage('readwrite',store=>store.put(assets,c.id));
+  }catch{
+    toast('Could not save cover artwork on this device. Export a backup before closing.',true);
+  }
+  if(findSelected()?.id===c.id){
+    updateCoverControls(c);
+    await paintThumbnail(c);
+  }
+}
+const coverChoice=c=>c.production?.cover||{};
+const currentCoverLayout=c=>Object.hasOwn(coverLayouts,coverChoice(c).layout)?coverChoice(c).layout:'portrait';
+function saveCoverChoice(c, changes){
+  c.production={...c.production,cover:{...coverChoice(c),...changes}};
+  persist();
+}
+function coverTime(seconds){
+  if(seconds==null)return '';
+  const tenths=Math.round(seconds*10);
+  return Math.floor(tenths/600)+':'+(tenths%600/10).toFixed(1).padStart(4,'0');
+}
 function thumbnailBuilder(c) {
-  return `<div class="thumbnail-builder">
-    <h4>Thumbnail B</h4>
-    <div class="drawer-actions">
-      <button class="btn btn-soft" data-action="copy-thumbnail-link">Copy original clip URL</button>
-      <button class="btn btn-accent" data-action="paste-thumbnail-link">Paste &amp; make thumbnail</button>
+  return `<section class="thumbnail-builder cover-studio" aria-labelledby="coverStudioTitle">
+    <h4 id="coverStudioTitle">Cover studio</h4>
+    <div class="cover-source">
+      <label>Video from Photos or Files<input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"></label>
+      <label>Still image<input id="thumbnailArtwork" type="file" accept="image/*"></label>
+      <label>Your portrait<input id="thumbnailPortrait" type="file" accept="image/*"></label>
     </div>
-    <div class="field"><label for="thumbnailSourceLink">Clip, video, or image link</label><input id="thumbnailSourceLink" type="url" placeholder="Paste a clip link or a direct video or image URL"/></div>
-    <button class="btn btn-soft" data-action="make-thumbnail-from-link">Make thumbnail</button>
-    <p class="fineprint" id="thumbnailStatus" role="status">Copy the original clip URL to send it to ChatGPT, or paste an image or video link here to build the thumbnail.</p>
-    <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="34" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="LOOKS FASTER?"/></div>
-    <details class="production-section"><summary>Use a sharper video frame</summary>
-      <div class="field"><label for="thumbnailVideo">Video file</label><input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"/></div>
-      <p class="fineprint">Choose a video file to grab a frame automatically.</p>
+    <details class="production-section"><summary>Use a source link</summary>
+      <label for="thumbnailSourceLink">Direct video, image, or original clip URL</label>
+      <input id="thumbnailSourceLink" type="url" inputmode="url" placeholder="https://">
+      <div class="drawer-actions">${btn('make-thumbnail-from-link','Use link','soft')}${btn('paste-thumbnail-link','Paste link')}${btn('copy-thumbnail-link','Copy original clip URL')}</div>
     </details>
-    <div class="thumbnail-inputs"><label>Episode image <input id="thumbnailArtwork" type="file" accept="image/*"/></label>
-    <label>Your portrait <input id="thumbnailPortrait" type="file" accept="image/*"/></label></div>
-    <p class="fineprint">Your portrait is reused on this browser. Episode images stay available while this tab is open.</p>
-    <canvas id="thumbnailPreview" style="width:min(100%,680px)" width="1280" height="720" aria-label="Thumbnail B preview"></canvas>
-    <button class="btn btn-soft" data-action="download-thumbnail">Download PNG</button>
-    <button class="btn btn-ghost" data-action="remove-portrait">Remove portrait</button>
-  </div>`;
+    <p class="fineprint" id="thumbnailStatus" role="status">Loading source…</p>
+    <div id="coverFilmstrip" class="cover-filmstrip" aria-label="Candidate frames"></div>
+    <div id="coverScrub" hidden>
+      <label for="coverPosition">Find the exact moment <output id="coverTime"></output></label>
+      <input id="coverPosition" type="range" min="0" step="0.1" value="0">
+      <canvas id="coverScrubPreview" width="240" height="135" aria-label="Video frame at selected timestamp" hidden></canvas>
+      <div class="drawer-actions">${btn('cover-grab','Use as main frame','soft')} ${btn('cover-grab-second','Use as comparison frame')}</div>
+    </div>
+    <fieldset class="cover-options"><legend>Pick a layout</legend>
+      <div class="cover-variants">${Object.entries(coverLayouts).map(([key,label])=>`<button type="button" data-cover-layout="${key}" aria-pressed="${currentCoverLayout(c)===key}"><canvas width="320" height="180" aria-hidden="true"></canvas><span>${label}</span></button>`).join('')}</div>
+    </fieldset>
+    <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="48" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="${esc(suggestThumbnailHeadline(c))}"></div>
+    <div class="drawer-actions">${btn('cover-headline','Use suggested headline','soft')}</div>
+    <details class="production-section"><summary>Adjust crop and artwork</summary>
+      <label for="coverCropX">Horizontal focus</label><input id="coverCropX" type="range" min="0" max="100" value="${esc(coverChoice(c).x??50)}">
+      <label for="coverCropY">Vertical focus</label><input id="coverCropY" type="range" min="0" max="100" value="${esc(coverChoice(c).y??50)}">
+      <label class="check-item"><input id="coverPortrait" type="checkbox" ${coverChoice(c).portrait!==false?'checked':''}> Use my portrait in Spinoza leads</label>
+      <label>Second comparison image<input id="coverComparison" type="file" accept="image/*"></label>
+      ${btn('cover-clear-comparison','Remove second frame')}${btn('remove-portrait','Remove saved portrait')}
+    </details>
+    <div class="cover-preview-tools">
+      <label for="coverRatio">Preview</label><select id="coverRatio">${optionList([['wide','16:9 widescreen'],['vertical','9:16 vertical']],coverChoice(c).ratio||'wide')}</select>
+      <label class="check-item"><input id="coverGuides" type="checkbox"> Show vertical crop guide</label>
+    </div>
+    <div class="cover-large-preview"><canvas id="thumbnailPreview" width="640" height="360" aria-label="Selected cover preview"></canvas><div class="cover-guides" hidden aria-hidden="true"></div></div>
+    <div class="drawer-actions">
+      ${btn('download-thumbnail','Save 16:9','accent','data-cover-export="wide"')}
+      ${btn('download-thumbnail','Save 9:16','accent','data-cover-export="vertical"')}
+      ${btn('share-thumbnail','Share selected format','soft')}
+      ${btn('cover-to-kit','Back to recording kit')}
+    </div>
+  </section>`;
 }
 function loadThumbnailImage(src, remote=false) {
   return new Promise(resolve=>{
@@ -376,11 +456,11 @@ function loadThumbnailImage(src, remote=false) {
     img.onload=()=>resolve(img);img.onerror=()=>resolve(null);img.src=src;
   });
 }
-function drawCover(ctx,img,x,y,w,h) {
+function drawCover(ctx,img,x,y,w,h,focusX=.5,focusY=.5) {
   const ratio=Math.max(w/img.width,h/img.height);
   ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
   const dw=img.width*ratio,dh=img.height*ratio;
-  ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  ctx.drawImage(img,x+(w-dw)*focusX,y+(h-dh)*focusY,dw,dh);
   ctx.restore();
 }
 const clipArtworkCache=new Map();
@@ -404,36 +484,141 @@ function loadClipArtwork(source) {
   }
   return clipArtworkCache.get(source);
 }
-async function paintThumbnail(c) {
-  const canvas=$('#thumbnailPreview');
-  if(!canvas||!c)return;
-  const [art,portrait,logo]=await Promise.all([
-    artworkByClip.has(c.id)?loadThumbnailImage(artworkByClip.get(c.id),artworkByClip.get(c.id).startsWith('https:')):loadClipArtwork(safeUrl(c.thumbnail)),
-    loadThumbnailImage(readPortrait()),
-    loadThumbnailImage(document.querySelector('link[rel=icon]')?.href)
+function coverImage(source) {
+  return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z\d+/=]+$/.test(source||'')?source:'';
+}
+async function loadCoverArtwork(c){
+  const assets=await getCoverAssets(c.id);
+  const [art,second,portrait]=await Promise.all([
+    assets.main?loadThumbnailImage(coverImage(assets.main.image)):loadClipArtwork(safeUrl(c.thumbnail)),
+    loadThumbnailImage(coverImage(assets.comparison?.image)),
+    loadThumbnailImage(readPortrait())
   ]);
-  if(!canvas.isConnected||findSelected()?.id!==c.id)return;
-  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
-  const status=$('#thumbnailStatus');
-  if(status)status.textContent=art
-    ? 'Source image: '+art.naturalWidth+' × '+art.naturalHeight+(art.naturalWidth<1280||art.naturalHeight<720?'. Low-resolution source. Try a direct video or upload a source frame.':'.')
-    : 'Clip image unavailable for export. Choose an episode image.';
-  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-  ctx.fillStyle='#332318';ctx.fillRect(0,0,w,h);
-  if(art)drawCover(ctx,art,0,0,w,h);
-  if(portrait)drawCover(ctx,portrait,850,90,410,610);
-  const shade=ctx.createLinearGradient(0,0,920,0);
-  shade.addColorStop(0,'#160f0ac7');shade.addColorStop(.48,'#160f0a65');shade.addColorStop(1,'#160f0a00');
+  return {art,second,portrait,source:assets.main};
+}
+function coverHeadline(ctx,text,width,baseSize){
+  let size=baseSize,lines=[];
+  for(;size>=12;size-=2){
+    ctx.font=`900 ${size}px system-ui, sans-serif`;
+    lines=[''];
+    for(const word of text.split(/\s+/)){
+      const tail=lines.at(-1);
+      const combined=tail?tail+' '+word:word;
+      if(tail&&ctx.measureText(combined).width>width)lines.push(word);
+      else lines[lines.length-1]=combined;
+    }
+    if(lines.length<=3&&lines.every(line=>ctx.measureText(line).width<=width))break;
+  }
+  return {lines,size:Math.max(12,size)};
+}
+function renderCover(canvas,c,media,layout,ratio){
+  const {art,second,portrait}=media,choice=coverChoice(c);
+  const ctx=canvas.getContext('2d'),vertical=ratio==='vertical';
+  const w=vertical?540:640,h=vertical?960:360;
+  ctx.setTransform(canvas.width/w,0,0,canvas.height/h,0,0);
+  ctx.imageSmoothingQuality='high';
+  ctx.fillStyle='#172345';ctx.fillRect(0,0,w,h);
+  const focusX=Math.min(1,Math.max(0,(Number(choice.x??50)||0)/100));
+  const focusY=Math.min(1,Math.max(0,(Number(choice.y??50)||0)/100));
+  const isSplit=layout==='comparison'&&art&&second;
+  if(isSplit){
+    const panelWidth=vertical?w:w/2,panelHeight=vertical?h/2:h;
+    drawCover(ctx,art,0,0,panelWidth,panelHeight,focusX,focusY);
+    drawCover(ctx,second,vertical?0:w/2,vertical?h/2:0,panelWidth,panelHeight);
+    ctx.fillStyle='#fff0d6';
+    ctx.fillRect(vertical?0:w/2-2,vertical?h/2-2:0,vertical?w:4,vertical?4:h);
+  }else if(art){
+    drawCover(ctx,art,0,0,w,h,focusX,focusY);
+  }
+  const showPortrait=layout==='portrait'&&portrait&&choice.portrait!==false;
+  if(showPortrait){
+    const px=vertical?w*.47:w*.63,py=vertical?h*.44:42,pw=w-px-20,ph=h-py-27;
+    ctx.fillStyle='#283e93';ctx.fillRect(px-5,py-5,pw+10,ph+10);
+    drawCover(ctx,portrait,px,py,pw,ph);
+  }
+  const shade=ctx.createLinearGradient(0,0,vertical||!showPortrait?0:w,vertical||!showPortrait?h:0);
+  const bottomText=layout==='moment'&&!vertical;
+  shade.addColorStop(0,bottomText?'#07112618':'#071126dc');
+  shade.addColorStop(bottomText?.42:.56,bottomText?'#07112616':'#07112650');
+  shade.addColorStop(1,bottomText?'#071126ef':'#07112600');
   ctx.fillStyle=shade;ctx.fillRect(0,0,w,h);
-  ctx.fillStyle='#f7d5ab14';
-  for(let y=32;y<h;y+=10)for(let x=30;x<800;x+=10){ctx.beginPath();ctx.arc(x,y,1,0,Math.PI*2);ctx.fill();}
-  ctx.strokeStyle='#fff5de';ctx.lineWidth=5;ctx.strokeRect(18,18,w-36,h-36);
-  if(logo)ctx.drawImage(logo,46,48,83,83);
-  const headline=(c.production?.thumbnailHeadline||suggestThumbnailHeadline(c)).trim().toUpperCase();
-  const words=headline.split(/\\s+/);const lines=[];
-  while(words.length)lines.push(words.splice(0,words.length>2?2:1).join(' '));
-  ctx.fillStyle='#fff5de';ctx.font='900 116px Impact, Arial Black, sans-serif';
-  lines.slice(0,4).forEach((line,k)=>ctx.fillText(line,55,245+k*109,740));
+  if(layout==='portrait'){
+    ctx.fillStyle='#fff0d61b';
+    for(let y=16;y<h-16;y+=7)for(let x=16;x<w*.52;x+=7)ctx.fillRect(x,y,1,1);
+  }
+  ctx.strokeStyle='#fff0d6';ctx.lineWidth=2.5;ctx.strokeRect(9,9,w-18,h-18);
+  ctx.fillStyle='#2547bd';ctx.fillRect(23,23,40,40);
+  ctx.fillStyle='#fff0d6';ctx.font='900 29px Georgia, serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('S',43,43);
+  const title=(c.production?.thumbnailHeadline||suggestThumbnailHeadline(c)).trim().toUpperCase().slice(0,80);
+  const x=32;
+  const maxWidth=showPortrait&&!vertical?w*.52:w-64;
+  const {lines,size}=coverHeadline(ctx,title,maxWidth,vertical?78:showPortrait?54:61);
+  const lineHeight=size*1.04;
+  const start=bottomText?h-34-(lines.length-1)*lineHeight:vertical?182:isSplit?104:131;
+  ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle='#fff0d6';
+  ctx.shadowColor='#061023';ctx.shadowBlur=8;
+  for(const [index,line] of lines.entries())ctx.fillText(line,x,start+index*lineHeight,maxWidth);
+  ctx.shadowBlur=0;
+}
+async function paintThumbnail(c){
+  const canvas=$('#thumbnailPreview');
+  if(!canvas||!c||clipStep!==2)return;
+  const token=Symbol();
+  coverPreviewTokens.set(canvas,token);
+  const media=await loadCoverArtwork(c);
+  if(!canvas.isConnected||findSelected()?.id!==c.id||clipStep!==2||coverPreviewTokens.get(canvas)!==token)return;
+  const ratio=coverChoice(c).ratio==='vertical'?'vertical':'wide';
+  canvas.width=ratio==='vertical'?360:640;canvas.height=ratio==='vertical'?640:360;
+  canvas.parentElement.dataset.ratio=ratio;
+  const layout=currentCoverLayout(c);
+  renderCover(canvas,c,media,layout,ratio);
+  for(const button of $$('[data-cover-layout]')){
+    button.setAttribute('aria-pressed',String(button.dataset.coverLayout===layout));
+    renderCover($('canvas',button),c,media,button.dataset.coverLayout,'wide');
+  }
+  const status=$('#thumbnailStatus');
+  const type=media.source?.kind||'Twitch preview';
+  if(status)status.textContent=media.art
+    ? `${type} · ${media.source?.width||media.art.naturalWidth} × ${media.source?.height||media.art.naturalHeight}${media.source?.time!=null?' · '+coverTime(media.source.time):''}.${Math.min(media.art.naturalWidth,media.art.naturalHeight)<720?' Small source. Try a sharper still or video.':''}${layout==='comparison'&&!media.second?' Add a second frame for the split view.':''}`
+    :'No source image available. Choose a photo or video to build the cover.';
+  updateCoverControls(c);
+}
+function canvasBlob(canvas,type='image/png',quality){
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode image')),type,quality));
+}
+async function prepareCoverFile(c,ratio){
+  const artwork=await loadCoverArtwork(c);
+  if(!artwork.art)throw Error('Choose a source image before exporting.');
+  if(currentCoverLayout(c)==='comparison'&&!artwork.second)throw Error('Add a second frame or switch layouts before exporting.');
+  const canvas=document.createElement('canvas');
+  canvas.width=ratio==='vertical'?1080:1280;canvas.height=ratio==='vertical'?1920:720;
+  renderCover(canvas,c,artwork,currentCoverLayout(c),ratio);
+  const name=String(c.title||'clip').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,55)||'clip';
+  return new File([await canvasBlob(canvas)],`spinoza-${name}-${ratio==='vertical'?'9x16':'16x9'}.png`,{type:'image/png'});
+}
+let preparedCoverShare;
+async function exportCover(c,ratio,share=false){
+  if(!c)return;
+  try{
+    const snapshot=JSON.stringify(c.production||{});
+    const cached=preparedCoverShare;
+    const ready=share&&cached?.id===c.id&&cached.ratio===ratio&&cached.snapshot===snapshot;
+    const file=ready?cached.file:await prepareCoverFile(c,ratio);
+    if(findSelected()?.id!==c.id)return;
+    if(share&&navigator.canShare?.({files:[file]})){
+      // iOS requires transient activation after asynchronous image encoding.
+      if(!ready&&!navigator.userActivation?.isActive){
+        preparedCoverShare={id:c.id,ratio,snapshot,file};
+        toast('Image ready. Tap Share selected format again.');
+        return;
+      }
+      await navigator.share({files:[file],title:'Spinoza cover'});
+    }else{
+      const url=URL.createObjectURL(file),link=document.createElement('a');
+      link.href=url;link.download=file.name;document.body.append(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+    }
+  }catch(error){if(error.name!=='AbortError')toast(error.message||'Cover export failed.',true)}
 }
 const pendingFrames=new Map();
 let copiedThumbnailLink='';
@@ -465,51 +650,138 @@ function frameScore(ctx,w,h) {
   const average=light/((w-1)*h);
   return detail/((w-1)*h)*Math.min(1,average/50,(255-average)/50);
 }
+function updateCoverControls(c){
+  const panel=$('#coverFilmstrip'),scrub=$('#coverScrub');
+  if(!panel||!scrub)return;
+  const film=coverFilmstrips.get(c.id),assets=coverAssets.get(c.id)||{};
+  panel.replaceChildren();
+  if(!film?.frames?.length){scrub.hidden=true;return}
+  for(const [index,frame] of film.frames.entries()){
+    const button=document.createElement('button');
+    const preview=document.createElement('img');
+    preview.src=frame.preview;preview.alt='';
+    button.type='button';button.dataset.coverFrame=String(index);
+    button.setAttribute('aria-pressed',String(assets.main?.time===frame.time&&assets.main?.session===film.session));
+    button.append(preview,document.createTextNode(coverTime(frame.time)+(index===film.best?' · Suggested':'')));
+    panel.append(button);
+  }
+  if(scrub.hidden){
+    const position=$('#coverPosition');
+    position.max=String(Math.max(0,film.duration-.05));
+    position.value=String(film.frames[film.best].time);
+    $('#coverTime').textContent=coverTime(Number(position.value));
+  }
+  scrub.hidden=false;
+}
+function releaseCoverVideo(cId){
+  pendingFrames.delete(cId);
+  const film=coverFilmstrips.get(cId);
+  if(!film)return;
+  film.video.removeAttribute('src');film.video.load();
+  if(film.local)URL.revokeObjectURL(film.source);
+  coverFilmstrips.delete(cId);
+}
+async function seekCoverVideo(video,time){
+  const target=Math.max(0,Math.min(video.duration-.01,time));
+  if(Math.abs(video.currentTime-target)>.005||video.seeking){
+    await waitForVideo(video,'seeked',()=>{video.currentTime=target});
+  }
+}
+function captureCoverImage(img,width,height,maxWidth,maxHeight){
+  const canvas=document.createElement('canvas');
+  const scale=Math.min(1,maxWidth/width,maxHeight/height);
+  canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+  canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+  return canvas;
+}
+async function previewCoverTime(c,time){
+  const film=coverFilmstrips.get(c?.id),canvas=$('#coverScrubPreview');
+  if(!film||!canvas||film.busy)return;
+  film.busy=true;
+  try{
+    await seekCoverVideo(film.video,time);
+    if(coverFilmstrips.get(c.id)!==film||!canvas.isConnected)return;
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#172345';ctx.fillRect(0,0,canvas.width,canvas.height);
+    const factor=Math.min(canvas.width/film.video.videoWidth,canvas.height/film.video.videoHeight);
+    const w=film.video.videoWidth*factor,h=film.video.videoHeight*factor;
+    ctx.drawImage(film.video,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
+    canvas.hidden=false;
+  }catch{canvas.hidden=true}
+  finally{film.busy=false}
+}
+async function chooseCoverFrame(c,time,slot='main'){
+  const film=coverFilmstrips.get(c?.id);
+  if(!film||film.busy)return;
+  film.busy=true;
+  try{
+    await seekCoverVideo(film.video,time);
+    if(coverFilmstrips.get(c.id)!==film)return;
+    const video=film.video,w=video.videoWidth,h=video.videoHeight;
+    const canvas=captureCoverImage(video,w,h,1920,1920);
+    await setCoverAsset(c,slot,{image:canvas.toDataURL('image/jpeg',.93),kind:'Video frame',width:w,height:h,time:Number(video.currentTime.toFixed(3)),session:film.session,clipUrl:c.url,...(!film.local?{mediaUrl:film.source}:{})});
+  }catch{if(coverFilmstrips.get(c.id)===film)toast('Could not capture that frame. Try a different timestamp.',true)}
+  finally{film.busy=false}
+}
 async function fetchThumbnailFrame(c,source,local=false) {
   if(!c||!source)return;
+  releaseCoverVideo(c.id);
   const request=Symbol();
   pendingFrames.set(c.id,request);
   const status=$('#thumbnailStatus');
-  if(status)status.textContent='Finding a clear video frame…';
+  if(status)status.textContent='Sampling the video for usable frames…';
   const video=document.createElement('video');
-  video.muted=true;
-  video.playsInline=true;
-  video.preload='auto';
+  video.muted=true;video.playsInline=true;video.preload='auto';
   if(!local)video.crossOrigin='anonymous';
+  let retained=false;
   try{
-    await waitForVideo(video,'loadeddata',()=>{video.src=source;video.load();});
-    if(!Number.isFinite(video.duration)||video.duration<=0||!video.videoWidth||!video.videoHeight)throw new Error('Video has no frames');
+    await waitForVideo(video,'loadeddata',()=>{video.src=source;video.load()});
+    if(!Number.isFinite(video.duration)||video.duration<=0||!video.videoWidth)throw Error('Video has no frames');
     const sample=document.createElement('canvas');
     sample.width=96;sample.height=54;
-    const sampleCtx=sample.getContext('2d',{willReadFrequently:true});
-    const frame=document.createElement('canvas');
-    const scale=Math.min(1,1920/video.videoWidth,1080/video.videoHeight);
-    frame.width=Math.max(1,Math.round(video.videoWidth*scale));
-    frame.height=Math.max(1,Math.round(video.videoHeight*scale));
-    const frameCtx=frame.getContext('2d');
-    let best=-1;
-    for(const fraction of [.5,.25,.75]){
+    const ctx=sample.getContext('2d',{willReadFrequently:true});
+    const frames=[], signatures=[];
+    const fractions=[.07,.19,.31,.43,.56,.69,.81,.93,.13,.37,.63,.87];
+    for(const fraction of fractions){
+      if(frames.length===8)break;
       if(pendingFrames.get(c.id)!==request)return;
-      await waitForVideo(video,'seeked',()=>{video.currentTime=video.duration*fraction;});
-      sampleCtx.drawImage(video,0,0,96,54);
-      const score=frameScore(sampleCtx,96,54);
-      if(score>best){
-        best=score;
-        frameCtx.drawImage(video,0,0,frame.width,frame.height);
-      }
+      await seekCoverVideo(video,video.duration*fraction);
+      ctx.drawImage(video,0,0,96,54);
+      const rgba=ctx.getImageData(0,0,96,54).data;
+      const signature=[];
+      for(let p=0;p<rgba.length;p+=64)signature.push((rgba[p]+rgba[p+1]+rgba[p+2])/3);
+      if(signatures.some(prior=>prior.reduce((sum,value,index)=>sum+Math.abs(value-signature[index]),0)/prior.length<5))continue;
+      const clarity=frameScore(ctx,96,54);
+      if(clarity<1&&frames.length)continue;
+      signatures.push(signature);
+      const preview=captureCoverImage(video,video.videoWidth,video.videoHeight,240,135).toDataURL('image/jpeg',.75);
+      frames.push({time:Number(video.currentTime.toFixed(3)),preview,clarity});
     }
-    if(pendingFrames.get(c.id)!==request)return;
-    artworkByClip.set(c.id,frame.toDataURL('image/png'));
-    if(findSelected()?.id===c.id){await paintThumbnail(c);toast('Used a frame from '+video.videoWidth+' × '+video.videoHeight+' video.');}
+    if(pendingFrames.get(c.id)!==request||!frames.length)return;
+    frames.sort((a,b)=>a.time-b.time);
+    const direction=selectedAngleText(c);
+    const payoff=/payoff|surviv|reveal|result/i.test(direction+' '+c.title);
+    const interest=frame=>frame.clarity*(payoff?1+frame.time/video.duration*.28:1);
+    const best=frames.reduce((winner,frame,index)=>interest(frame)>interest(frames[winner])?index:winner,0);
+    const film={video,source,local,duration:video.duration,frames,best,session:makeID()};
+    coverFilmstrips.set(c.id,film);
+    retained=true;
+    updateCoverControls(c);
+    const assets=await getCoverAssets(c.id);
+    if(coverFilmstrips.get(c.id)!==film)return;
+    if(assets.comparison?.session)await setCoverAsset(c,'comparison',null);
+    await chooseCoverFrame(c,frames[best].time);
   }catch{
     if(pendingFrames.get(c.id)===request&&findSelected()?.id===c.id){
-      const currentStatus=$('#thumbnailStatus');
-      if(currentStatus)currentStatus.textContent=local?'Could not read that video. Try an MP4.':'Video unavailable. Use a direct video link that allows browser access, or choose a video file.';
+      const current=$('#thumbnailStatus');
+      if(current)current.textContent=local?'Could not read this video. Try an MP4 or upload a still.':'This link does not provide browser-readable video. Choose a video or still from Photos or Files.';
     }
   }finally{
     if(pendingFrames.get(c.id)===request)pendingFrames.delete(c.id);
-    video.removeAttribute('src');video.load();
-    if(local)URL.revokeObjectURL(source);
+    if(!retained){
+      video.removeAttribute('src');video.load();
+      if(local)URL.revokeObjectURL(source);
+    }
   }
 }
 function applySuggestedHeadline(c) {
@@ -541,10 +813,10 @@ async function makeThumbnailFromLink(c,value) {
     const image=await loadThumbnailImage(url.href,true);
     if(findSelected()?.id!==c.id)return;
     if(!image){if(status?.isConnected)status.textContent='This image link does not allow browser access. Choose an episode image instead.';return;}
-    pendingFrames.delete(c.id);
-    artworkByClip.set(c.id,url.href);
+    releaseCoverVideo(c.id);
     applySuggestedHeadline(c);
-    await paintThumbnail(c);
+    const canvas=captureCoverImage(image,image.naturalWidth,image.naturalHeight,1920,1920);
+    await setCoverAsset(c,'main',{image:canvas.toDataURL('image/jpeg',.93),kind:'Linked image',width:image.naturalWidth,height:image.naturalHeight,clipUrl:c.url,mediaUrl:url.href});
     return;
   }
   applySuggestedHeadline(c);
@@ -557,14 +829,21 @@ async function setThumbnailImage(input,c) {
   try{
     const img=await loadThumbnailImage(url);
     if(!img){toast('Choose a supported image.',true);return;}
-    const canvas=document.createElement('canvas');
-    const scale=Math.min(1,1280/Math.max(img.width,img.height));
-    canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
-    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-    const image=canvas.toDataURL('image/webp',.87);
-    if(input.id==='thumbnailPortrait')localStorage.setItem(portraitKey,image);
-    else {pendingFrames.delete(c.id);artworkByClip.set(c.id,image);}
-    await paintThumbnail(c);
+    const portrait=input.id==='thumbnailPortrait';
+    const limit=portrait?768:1920;
+    const width=img.naturalWidth,height=img.naturalHeight;
+    const canvas=captureCoverImage(img,width,height,limit,limit);
+    const image=portrait?canvas.toDataURL('image/webp',.88):canvas.toDataURL('image/jpeg',.91);
+    if(portrait){
+      localStorage.setItem(portraitKey,image);
+      preparedCoverShare=null;
+      saveCoverChoice(c,{portrait:true});
+      await paintThumbnail(c);
+    }else{
+      const slot=input.id==='coverComparison'?'comparison':'main';
+      if(slot==='main')releaseCoverVideo(c.id);
+      await setCoverAsset(c,slot,{image,kind:'Uploaded still',width,height,clipUrl:c.url});
+    }
   }catch{toast('Could not load or save that image.',true);}
   finally{URL.revokeObjectURL(url);}
 }
@@ -614,13 +893,69 @@ function saveRights(){const c=findSelected();if(!c)return;const status=$('#right
 function addManualClip(form){const fd=new FormData(form),url=safeUrl(fd.get('url'));if(!url){toast('Enter a valid http(s) source URL.',true);return}if(state.clips.some(c=>clipKey(c)===clipKey({url}))){toast('This source URL is already tracked.',true);return}const c={id:makeID(),sourceId:'',url,title:String(fd.get('title')).trim(),streamer:String(fd.get('streamer')).trim().replace(/^@/,''),platform:String(fd.get('platform')),views:Math.max(0,Number(fd.get('views')||0)),duration:Number(fd.get('duration')||0),createdAt:fd.get('createdAt')?new Date(fd.get('createdAt')).toISOString():'',discoveredAt:nowISO(),thumbnail:'',status:'discovered',rating:0,hook:'',valueAdd:'',editor:'',postedUrl:'',checks:{},rights:{status:'unknown',evidence:'',scope:'',note:'',confirmedAt:''}};state.clips.push(c);closeModal();page='discovery';changed('Clip added',c.title);toast('Clip added to Discovery')}
 function upsertStreamer(form){const fd=new FormData(form),handle=String(fd.get('handle')||'').trim().replace(/^@/,'').toLowerCase();if(!/^[a-z0-9_]{2,90}$/.test(handle)){toast('Use a valid Twitch username.',true);return}const id=String(fd.get('id')||''),existing=state.streamers.find(s=>s.id===id);if(state.streamers.some(s=>s.handle.toLowerCase()===handle&&s.id!==id)){toast('This streamer is already on your watchlist.',true);return}const data={id:existing?.id||makeID(),handle,name:String(fd.get('name')||'').trim(),platform:'Twitch',priority:Number(fd.get('priority')),notes:String(fd.get('notes')||'').trim()};if(existing)Object.assign(existing,data);else state.streamers.push(data);closeModal();changed(existing?'Creator updated':'Creator added',handle);toast(existing?'Creator updated':'Added to radar')}
 async function scan(){await refreshFeed(false)}
-function exportJSON(){const raw=JSON.stringify({...state,exportedAt:nowISO()},null,2);const blob=new Blob([raw],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='leonida-signal-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1200);toast('Backup exported')}
-async function importJSON(file){if(!file)return;try{const s=JSON.parse(await file.text());if(!Array.isArray(s.clips)||!Array.isArray(s.streamers))throw Error('Not a valid LEONIDA SIGNAL backup.');if(!confirm(`Replace your workspace with ${s.clips.length} clips and ${s.streamers.length} creators from this backup?`))return;state=normalizeState(s);clipSelected=null;closeDrawer();changed('Backup restored',file.name);toast('Backup imported')}catch(err){toast('Import failed: '+err.message,true)}}
+async function exportJSON(){
+  try{
+    const records=await Promise.all(state.clips.map(async c=>[c.id,await getCoverAssets(c.id)]));
+    const covers=Object.fromEntries(records.filter(([,assets])=>Object.keys(assets).length));
+    const raw=JSON.stringify({...state,coverBackup:{covers,portrait:readPortrait()},exportedAt:nowISO()},null,2);
+    const blob=new Blob([raw],{type:'application/json'});
+    const url=URL.createObjectURL(blob),anchor=document.createElement('a');
+    anchor.href=url;anchor.download='leonida-signal-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.append(anchor);anchor.click();anchor.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Backup exported');
+  }catch{toast('Could not export backup.',true)}
+}
+async function importJSON(file){
+  if(!file)return;
+  try{
+    const {coverBackup,...incoming}=JSON.parse(await file.text());
+    if(!Array.isArray(incoming.clips)||!Array.isArray(incoming.streamers))throw Error('Not a valid LEONIDA SIGNAL backup.');
+    if(!confirm(`Replace your workspace with ${incoming.clips.length} clips and ${incoming.streamers.length} creators from this backup?`))return;
+    if(coverBackup){
+      const records=incoming.clips.flatMap(c=>{
+        const stored=coverBackup.covers?.[c.id];
+        if(!stored)return [];
+        const assets=Object.fromEntries(['main','comparison'].filter(slot=>coverImage(stored[slot]?.image)).map(slot=>[slot,stored[slot]]));
+        return [[c.id,assets]];
+      });
+      await coverStorage('readwrite',store=>{
+        const clear=store.clear();
+        for(const [id,assets] of records)store.put(assets,id);
+        return clear;
+      });
+      coverAssets.clear();
+      preparedCoverShare=null;
+      const portrait=coverImage(coverBackup.portrait);
+      if(portrait)localStorage.setItem(portraitKey,portrait);
+      else localStorage.removeItem(portraitKey);
+    }
+    closeDrawer();
+    state=normalizeState(incoming);
+    changed('Backup restored',file.name);toast('Backup imported');
+  }catch(err){toast('Import failed: '+err.message,true)}
+}
 async function copyToClipboard(text){try{await navigator.clipboard.writeText(text);toast('Copied')}catch{toast('Copy is unavailable in this context.',true)}}
 function route(name){page=name;closeDrawer();$('#sidebar').classList.remove('mobile-open');render();window.scrollTo(0,0)}
 
 // Event delegation: supports dynamically rendered views, touch controls, and accessible buttons.
 document.addEventListener('click',async e=>{
+  const coverButton=e.target.closest('[data-cover-layout],[data-cover-frame]');
+  if(coverButton){
+    const c=findSelected();
+    if(!c)return;
+    if(coverButton.dataset.coverLayout){
+      saveCoverChoice(c,{layout:coverButton.dataset.coverLayout});
+      paintThumbnail(c);
+    }else{
+      const frame=coverFilmstrips.get(c.id)?.frames[Number(coverButton.dataset.coverFrame)];
+      if(frame){
+        $('#coverPosition').value=String(frame.time);
+        $('#coverTime').textContent=coverTime(frame.time);
+        await chooseCoverFrame(c,frame.time);
+      }
+    }
+    return;
+  }
   const angleButton=e.target.closest('[data-use-angle]');
   if(angleButton){
     const c=findSelected(), key=angleButton.dataset.useAngle;
@@ -634,7 +969,7 @@ document.addEventListener('click',async e=>{
  const recordButton=e.target.closest('[data-record-clip]');
  if(recordButton){openDrawer(recordButton.dataset.recordClip,4);return}
  const packageButton=e.target.closest('[data-copy-package]');
- if(packageButton){const c=findSelected();if(c)await copyToClipboard(platformPackage(c,packageButton.dataset.copyPackage));return}
+ if(packageButton){const c=findSelected();if(c){await getCoverAssets(c.id);await copyToClipboard(platformPackage(c,packageButton.dataset.copyPackage))}return}
  const removeResult=e.target.closest('[data-remove-result]');
  if(removeResult&&confirm('Delete this performance entry?')){
    state.performance=state.performance.filter(row=>row.id!==removeResult.dataset.removeResult);
@@ -720,14 +1055,24 @@ document.addEventListener('click',async e=>{
    const c=findSelected();if(c)await makeThumbnailFromLink(c,$('#thumbnailSourceLink').value.trim());
    break;
  }
- case 'download-thumbnail':{
-   const c=findSelected();if(!c)break;
-   await paintThumbnail(c);
-   const canvas=$('#thumbnailPreview');if(!canvas||findSelected()?.id!==c.id)break;
-   canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='leonida-thumbnail.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},'image/png');
+ case 'download-thumbnail':await exportCover(findSelected(),e.target.closest('[data-cover-export]')?.dataset.coverExport);break;
+ case 'share-thumbnail':{const c=findSelected();if(c)await exportCover(c,coverChoice(c).ratio||'wide',true);break}
+ case 'cover-open':case 'cover-to-kit':{
+   const c=findSelected();
+   if(c){clipStep=action==='cover-open'?2:4;c.production={...c.production,step:clipStep};persist();renderDrawer();showClipStep(true)}
    break;
  }
- case 'remove-portrait':{localStorage.removeItem(portraitKey);paintThumbnail(findSelected());break;}
+ case 'cover-headline':{
+   const c=findSelected();if(c){const field=$('#production-thumbnailHeadline');field.value=suggestThumbnailHeadline(c);field.dispatchEvent(new Event('input',{bubbles:true}));}
+   break;
+ }
+ case 'cover-grab':case 'cover-grab-second':{
+   const c=findSelected(),position=$('#coverPosition');
+   if(c&&position)await chooseCoverFrame(c,Number(position.value),action==='cover-grab-second'?'comparison':'main');
+   break;
+ }
+ case 'cover-clear-comparison':{const c=findSelected();if(c)await setCoverAsset(c,'comparison',null);break}
+ case 'remove-portrait':{localStorage.removeItem(portraitKey);preparedCoverShare=null;paintThumbnail(findSelected());break;}
  case 'copy-caption-brief':{const c=findSelected();if(c)await copyToClipboard([
    'Write three short caption options in Spinoza’s voice for this video.',
    'Source: '+c.title+' — '+c.url,
@@ -763,8 +1108,19 @@ document.addEventListener('submit',e=>{
  }
  if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
 document.addEventListener('change',e=>{const t=e.target;
+ if(t.id==='coverPosition'){previewCoverTime(findSelected(),Number(t.value));return}
+ if(t.id==='coverGuides'){
+   const guides=$('.cover-guides');
+   if(guides)guides.hidden=!t.checked;
+   return;
+ }
+ if(['coverRatio','coverPortrait'].includes(t.id)){
+   const c=findSelected();
+   if(c){saveCoverChoice(c,t.id==='coverRatio'?{ratio:t.value}:{portrait:t.checked});paintThumbnail(c)}
+   return;
+ }
  if(e.target.id==='thumbnailVideo'&&e.target.files?.[0]&&findSelected()){fetchThumbnailFrame(findSelected(),URL.createObjectURL(e.target.files[0]),true);return;}
- if(['thumbnailArtwork','thumbnailPortrait'].includes(e.target.id)&&e.target.type==='file'){setThumbnailImage(e.target,findSelected());return;}
+ if(['thumbnailArtwork','thumbnailPortrait','coverComparison'].includes(e.target.id)&&e.target.type==='file'){setThumbnailImage(e.target,findSelected());return;}
  if(t.id==='statusFilter'){filterStatus=t.value;render();return}if(t.id==='sortFilter'){sortMode=t.value;render();return}
  if(t.id==='settingWindow'){state.settings.scanWindow=Number(t.value);changed();return}if(t.id==='settingMax'){state.settings.maxClips=Number(t.value);changed();return}if(t.id==='settingAuto'){state.settings.autoScan=t.value==='on';changed();return}
  if(t.id==='importFile'){importJSON(t.files[0]);t.value='';return}
@@ -772,6 +1128,13 @@ document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.checkField){const c=findSelected();if(!c)return;c.checks={...(c.checks||{}),[t.dataset.checkField]:t.checked};changed();return}
 });
 document.addEventListener('input',e=>{
+ const t=e.target;
+ if(t.id==='coverPosition'){$('#coverTime').textContent=coverTime(Number(t.value));return}
+ if(['coverCropX','coverCropY'].includes(t.id)){
+   const c=findSelected();
+   if(c){saveCoverChoice(c,{[t.id==='coverCropX'?'x':'y']:Number(t.value)});paintThumbnail(c)}
+   return;
+ }
  const key=e.target.dataset.productionField;
  if(key&&productionFields.some(([field])=>field===key)){
    const c=findSelected();
@@ -844,6 +1207,8 @@ function platformPackage(clip,platform){
     ...(copy||[]),
     'Credit: '+(clip.verification?.credit||creator),
     'Original source: '+clip.url,
+    'Cover layout: '+coverLayouts[currentCoverLayout(clip)]+' · '+headline,
+    ...(coverAssets.get(clip.id)?.main?.time!=null?['Cover source time: '+coverTime(coverAssets.get(clip.id).main.time)]:[]),
     'Export: Clean vertical master (9:16) with readable captions. Check the cover and credits on the destination before uploading manually.',
     'After posting: Save the live URL and log results at a consistent post age.'
   ].join('\n');
@@ -856,6 +1221,9 @@ function recordKit(c){
     <p class="fineprint">${esc(selectedAngleText(c))}</p>
     <h3>Script</h3><p class="r2-copy">${esc(p.script||'Write the script in the Write step.')}</p>
     ${productionField(c,'filmingNotes')}
+    <h3>Cover</h3>
+    <div class="r2-actions">${btn('cover-open','Make a cover','accent')}</div>
+    <p class="fineprint" id="recordCover">${esc(coverLayouts[currentCoverLayout(c)])} · ${esc(p.thumbnailHeadline||suggestThumbnailHeadline(c))}</p>
     <h3>Thumbnail concept</h3><p class="r2-copy">${esc(p.thumbnailBrief||'Choose one clear source frame and use the Thumbnail B layout in Package.')}</p>
     <h3>Publishing packages</h3>
     ${publishingPlatforms.map((platform)=>`<details class="production-section"><summary>${platform}</summary><p class="r2-copy">${esc(platformPackage(c,platform))}</p><button class="btn btn-soft" data-copy-package="${platform}" aria-label="Copy ${platform} package">Copy package</button></details>`).join('')}
@@ -869,7 +1237,8 @@ function renderRecord(){
 }
 const resultMetrics=[
   ['views','Views'],['reach','Reach'],['retention','Average viewed (%)'],['shares','Shares'],
-  ['engagement','Interactions'],['subscribers','Subscribers gained']
+  ['engagement','Interactions'],['subscribers','Subscribers gained'],
+  ['impressions','Cover impressions'],['coverCtr','Cover click-through (%)']
 ];
 const durationBucket=seconds=>seconds<=15?'Up to 15s':seconds<=30?'16–30s':seconds<=60?'31–60s':'Over 60s';
 function savePerformance(form){
@@ -880,6 +1249,12 @@ function savePerformance(form){
   if(Object.values(stats).every(value=>value===null)){toast('Enter at least one measured result.',true);return}
   const row={
     id:makeID(),clipId:clip?.id||'',url,platform,window:Number(data.get('window')),stats,
+    cover:clip?.production?.cover?.layout?{
+      layout:currentCoverLayout(clip),
+      headline:clip.production.thumbnailHeadline||suggestThumbnailHeadline(clip),
+      headlineStyle:(clip.production.thumbnailHeadline||suggestThumbnailHeadline(clip)).trim().endsWith('?')?'Question':'Statement',
+      portrait:currentCoverLayout(clip)==='portrait'&&coverChoice(clip).portrait!==false&&!!readPortrait()
+    }:null,
     topic:String(data.get('topic')).trim(),format:String(data.get('format')).trim(),
     hook:String(data.get('hook')).trim(),duration:Number(data.get('duration')),loggedAt:nowISO()
   };
@@ -890,11 +1265,17 @@ function savePerformance(form){
 }
 function analyticsBreakdown(platform,window,metric){
   const rows=state.performance.filter(r=>r.platform===platform&&r.window===window&&Number.isFinite(r.stats[metric]));
-  const dimensions=[['topic','Topic'],['format','Format'],['hook','Hook'],['duration','Duration']];
+  const dimensions=['impressions','coverCtr'].includes(metric)
+    ? [['topic','Topic'],['coverLayout','Cover layout'],['coverHeadline','Headline style'],['coverPortrait','Portrait']]
+    : [['topic','Topic'],['format','Format'],['hook','Hook'],['duration','Duration']];
   return dimensions.map(([key,label])=>{
     const groups=new Map();
     for(const row of rows){
-      const name=key==='duration'?durationBucket(row.duration):row[key];
+      const names={
+        duration:durationBucket(row.duration),coverLayout:coverLayouts[row.cover?.layout],
+        coverHeadline:row.cover?.headlineStyle,coverPortrait:row.cover?(row.cover.portrait?'Included':'Hidden'):null
+      };
+      const name=names[key]??row[key];
       if(!name)continue;
       const groupKey=name.toLowerCase();
       const group=groups.get(groupKey)||{name,count:0,total:0};
@@ -918,13 +1299,13 @@ function renderAnalytics(){
           <label>Format<input name="format" required maxlength="100" placeholder="e.g. comparison"></label>
           <label>Hook type<input name="hook" required maxlength="100" placeholder="e.g. blind test"></label>
           <label>Video seconds<input name="duration" type="number" min="1" max="36000" required></label>
-          ${resultMetrics.map(([key,label])=>`<label>${label}<input name="${key}" type="number" min="0" step="${key==='retention'?'0.01':'1'}"></label>`).join('')}
+          ${resultMetrics.map(([key,label])=>`<label>${label}<input name="${key}" type="number" min="0" step="${['retention','coverCtr'].includes(key)?'0.01':'1'}" ${key==='coverCtr'?'max="100"':''}></label>`).join('')}
         </div>
         <div class="r2-actions"><button class="btn btn-accent">Save results</button></div>
       </form>
     </div>
     <div class="r2-section"><h3>What’s performing</h3>
-      <p class="fineprint">Averages compare a single platform and post age. Small samples are directional.</p>
+      <p class="fineprint">Averages compare a single platform and post age. Cover metrics come from platform analytics. Small samples are directional.</p>
       <div class="form-grid">
         <label>Platform<select data-analytics-filter="platform">${optionList(publishingPlatforms.map(p=>[p,p]),analyticsFilter.platform)}</select></label>
         <label>Post age<select data-analytics-filter="window">${optionList([[1,'1 day'],[7,'7 days'],[30,'30 days']],analyticsFilter.window)}</select></label>
