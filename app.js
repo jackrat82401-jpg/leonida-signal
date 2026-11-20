@@ -153,7 +153,7 @@ function updateConnection(){
   $('#connectionPulse').classList.toggle('connected',live);
 }
 function render(){const labels={overview:'Home',discovery:'Discovery',watchlist:'Watchlist',rights:'Rights desk',pipeline:'Edit pipeline',settings:'Settings',record:'Ready to Record',analytics:'Performance'};$('#pageBreadcrumb').textContent=labels[page];$$('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$('#navStreamerCount').textContent=state.streamers.length;$('#navDiscoveryCount').textContent=state.clips.length;$('#navRightsCount').textContent=state.clips.filter(c=>!isCleared(c)&&c.status!=='published'&&c.status!=='archived').length;const target=$('#mainContent');target.innerHTML=({overview:renderOverview,discovery:renderDiscovery,watchlist:renderWatchlist,rights:renderRights,pipeline:renderPipeline,settings:renderSettings,record:renderRecord,analytics:renderAnalytics})[page]();}
-function pageTop(kicker,title,sub,buttons=''){return `<div class="page-top"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${sub}</p></div>${buttons?`<div class="page-actions">${buttons}</div>`:''}</div>`}
+function pageTop(kicker,title,sub,buttons=''){return `<div class="page-top"><div><h1>${title}</h1><p>${sub}</p></div>${buttons?`<div class="page-actions">${buttons}</div>`:''}</div>`}
 function btn(action,title,variant='ghost',extra=''){return `<button class="btn btn-${variant}" data-action="${action}" ${extra}>${title}</button>`}
 function empty(symbol,title,desc,action='',label=''){return `<div class="empty"><div class="empty-symbol">${symbol}</div><strong>${title}</strong><p>${desc}</p>${action?btn(action,label,'soft'):''}</div>`}
 function tag(value){const label=statusTitles[value]||value||'Unknown';let t=['approved','published','scheduled'].includes(value)?'accent':value==='rights'?'warn':value==='editing'?'teal':value==='review'?'rose':'';return `<span class="tag ${t}">${esc(label)}</span>`}
@@ -240,7 +240,7 @@ function renderOverview() {
     <section class="panel desk-section"><div class="panel-head"><h3>Three clips worth watching</h3>${btn('nav-discovery','Browse all','ghost')}</div>
     <div class="desk-picks">${picks.map(c=>`<div><p class="desk-pitch">${esc(clipPitch(c))}</p>${clipCard(c)}</div>`).join('') || '<p class="fineprint">New clips will appear here when the feed updates.</p>'}</div></section>`;
 }
-function renderDiscovery(){return `${pageTop('01 / THE RADAR','Discovery','Sort fresh Twitch clips by early traction and editorial signal.',`${btn('add-clip','+ Add clip','ghost')}${btn('scan','↻ Refresh feed','accent')}`)}
+function renderDiscovery(){return `${pageTop('01 / THE RADAR','Discovery','Sort fresh Twitch clips by early traction and editorial signal.',`${btn('add-clip','Add clip','accent')}`)}
   <div class="filterbar"><input class="search-input" id="clipSearch" type="search" placeholder="Search clip title or streamer..." value="${esc(filterText)}"/><select class="select-input" id="statusFilter"><option value="all">All statuses</option>${Object.entries(statusTitles).map(([k,v])=>`<option value="${k}" ${filterStatus===k?'selected':''}>${v}</option>`).join('')}</select><select class="select-input" id="sortFilter"><option value="score" ${sortMode==='score'?'selected':''}>Highest signal</option><option value="views" ${sortMode==='views'?'selected':''}>Most views</option><option value="newest" ${sortMode==='newest'?'selected':''}>Newest</option></select><span class="count">${sortedClips().length} results</span></div>
   ${state.clips.length?`<div class="clips" id="clipsContainer">${sortedClips().map(clipCard).join('')}</div>`: `<section class="panel">${empty('◎','Your discovery feed starts here','The hosted feed is awaiting Twitch setup. You can also add links manually.','add-clip','+ Add clip manually')}</section>`}`}
 function renderWatchlist(){return (watchlistSuggestions().length?`<div class="r2-actions">${btn('add-suggested-creators','Add suggested creators','soft')}</div>`:'')+`${pageTop('02 / PEOPLE TO WATCH','Streamer watchlist','Track creator channels, priority and partnerships. Adding a creator does not mean they are confirmed to stream GTA VI.',btn('add-streamer','+ Add streamer','accent'))}
@@ -405,17 +405,18 @@ function coverTime(seconds){
 function thumbnailBuilder(c) {
   return `<section class="thumbnail-builder cover-studio" aria-labelledby="coverStudioTitle">
     <h4 id="coverStudioTitle">Cover studio</h4>
-    <div class="cover-source">
-      <label>Video from Photos or Files<input id="thumbnailVideo" type="file" accept="video/*,.mp4,.webm,.mov"></label>
-      <label>Still image<input id="thumbnailArtwork" type="file" accept="image/*"></label>
-      <label>Your portrait<input id="thumbnailPortrait" type="file" accept="image/*"></label>
-    </div>
+    <label class="cover-picker">Choose a photo or video<input id="coverMedia" type="file" accept="image/*,video/*,.mp4,.mov,.webm"></label>
     <details class="production-section"><summary>Use a source link</summary>
       <label for="thumbnailSourceLink">Direct video, image, or original clip URL</label>
       <input id="thumbnailSourceLink" type="url" inputmode="url" placeholder="https://">
       <div class="drawer-actions">${btn('make-thumbnail-from-link','Use link','soft')}${btn('paste-thumbnail-link','Paste link')}${btn('copy-thumbnail-link','Copy original clip URL')}</div>
     </details>
     <p class="fineprint" id="thumbnailStatus" role="status">Loading source…</p>
+    <div class="cover-preview-tools">
+      <label for="coverRatio">Preview</label><select id="coverRatio">${optionList([['wide','16:9 widescreen'],['vertical','9:16 vertical']],coverChoice(c).ratio||'wide')}</select>
+      <label class="check-item"><input id="coverGuides" type="checkbox"> Show vertical crop guide</label>
+    </div>
+    <div class="cover-large-preview"><canvas id="thumbnailPreview" width="640" height="360" aria-label="Selected cover preview"></canvas><div class="cover-guides" hidden aria-hidden="true"></div></div>
     <div id="coverFilmstrip" class="cover-filmstrip" aria-label="Candidate frames"></div>
     <div id="coverScrub" hidden>
       <label for="coverPosition">Find the exact moment <output id="coverTime"></output></label>
@@ -428,21 +429,16 @@ function thumbnailBuilder(c) {
     </fieldset>
     <div class="field"><label for="production-thumbnailHeadline">Headline</label><input id="production-thumbnailHeadline" data-production-field="thumbnailHeadline" maxlength="48" value="${esc(c.production?.thumbnailHeadline||'')}" placeholder="${esc(suggestThumbnailHeadline(c))}"></div>
     <div class="drawer-actions">${btn('cover-headline','Use suggested headline','soft')}</div>
-    <details class="production-section"><summary>Adjust crop and artwork</summary>
+    <details class="production-section"><summary>Crop, portrait &amp; comparison</summary>
+      <label>Your portrait<input id="thumbnailPortrait" type="file" accept="image/*"></label>
       <label for="coverCropX">Horizontal focus</label><input id="coverCropX" type="range" min="0" max="100" value="${esc(coverChoice(c).x??50)}">
       <label for="coverCropY">Vertical focus</label><input id="coverCropY" type="range" min="0" max="100" value="${esc(coverChoice(c).y??50)}">
       <label class="check-item"><input id="coverPortrait" type="checkbox" ${coverChoice(c).portrait!==false?'checked':''}> Use my portrait in Spinoza leads</label>
       <label>Second comparison image<input id="coverComparison" type="file" accept="image/*"></label>
       ${btn('cover-clear-comparison','Remove second frame')}${btn('remove-portrait','Remove saved portrait')}
     </details>
-    <div class="cover-preview-tools">
-      <label for="coverRatio">Preview</label><select id="coverRatio">${optionList([['wide','16:9 widescreen'],['vertical','9:16 vertical']],coverChoice(c).ratio||'wide')}</select>
-      <label class="check-item"><input id="coverGuides" type="checkbox"> Show vertical crop guide</label>
-    </div>
-    <div class="cover-large-preview"><canvas id="thumbnailPreview" width="640" height="360" aria-label="Selected cover preview"></canvas><div class="cover-guides" hidden aria-hidden="true"></div></div>
     <div class="drawer-actions">
-      ${btn('download-thumbnail','Save 16:9','accent','data-cover-export="wide"')}
-      ${btn('download-thumbnail','Save 9:16','accent','data-cover-export="vertical"')}
+      ${btn('download-thumbnail','Save PNG','accent')}
       ${btn('share-thumbnail','Share selected format','soft')}
       ${btn('cover-to-kit','Back to recording kit')}
     </div>
@@ -518,8 +514,9 @@ function renderCover(canvas,c,media,layout,ratio){
   ctx.setTransform(canvas.width/w,0,0,canvas.height/h,0,0);
   ctx.imageSmoothingQuality='high';
   ctx.fillStyle='#172345';ctx.fillRect(0,0,w,h);
-  const focusX=Math.min(1,Math.max(0,(Number(choice.x??50)||0)/100));
-  const focusY=Math.min(1,Math.max(0,(Number(choice.y??50)||0)/100));
+  const focus=choice.crops?.[ratio]||choice;
+  const focusX=Math.min(1,Math.max(0,(Number(focus.x??50)||0)/100));
+  const focusY=Math.min(1,Math.max(0,(Number(focus.y??50)||0)/100));
   const isSplit=layout==='comparison'&&art&&second;
   if(isSplit){
     const panelWidth=vertical?w:w/2,panelHeight=vertical?h/2:h;
@@ -570,6 +567,9 @@ async function paintThumbnail(c){
   const ratio=coverChoice(c).ratio==='vertical'?'vertical':'wide';
   canvas.width=ratio==='vertical'?360:640;canvas.height=ratio==='vertical'?640:360;
   canvas.parentElement.dataset.ratio=ratio;
+  const focus=coverChoice(c).crops?.[ratio]||coverChoice(c);
+  $('#coverCropX').value=focus.x??50;
+  $('#coverCropY').value=focus.y??50;
   const layout=currentCoverLayout(c);
   renderCover(canvas,c,media,layout,ratio);
   for(const button of $$('[data-cover-layout]')){
@@ -877,10 +877,12 @@ function renderDrawer(){if(!clipSelected)return;const c=state.clips.find(x=>x.id
     </details>
   </div></section><section class="clip-step production-section"><div class="production-fields">
     <p class="fineprint" data-angle-context>${esc(selectedAngleText(c))}</p>
+    ${thumbnailBuilder(c)}
+    <details class="production-section"><summary>Captions and creative brief</summary>
     <button class="btn btn-soft" data-action="copy-caption-brief">Copy caption prompt</button>
     ${['captionOptions','chosenCaption','thumbnailBrief'].map(key=>productionField(c,key)).join('')}
     <button class="btn btn-soft" data-action="copy-thumbnail-brief">Copy thumbnail brief</button>
-    ${thumbnailBuilder(c)}
+    </details>
   </div></section><section class="clip-step production-section"><div class="field"><label>Current production stage</label><select data-clip-field="status">${optionList([...stages,['archived','Archived']],c.status||'discovered')}</select></div>${!pass?`<p class="fineprint">Record permissions in the rights section before advancing into production.</p>`:''}<details class="production-section"><summary>Rights record</summary><div class="field"><label>Authorization status</label><select id="rightStatus">${optionList([['unknown','Unknown / unverified'],['requested','Permission requested'],['granted','Creator granted permission'],['denied','Denied / do not use'],['own','Owned footage'],['other_basis','Other documented legal basis']],r.status||'unknown')}</select></div><div class="field"><label>Evidence / approval reference</label><input id="rightEvidence" value="${esc(r.evidence||'')}" placeholder="Link to agreement, DM record, email reference..."/></div><div class="field"><label>Scope / allowed platforms</label><input id="rightScope" value="${esc(r.scope||'')}" placeholder="e.g. TikTok, YouTube Shorts, Instagram; non-exclusive" /></div><div class="field"><label>Permission notes / rationale</label><textarea id="rightNote" placeholder="Terms, limitations, expiry, or reasoning for other legal basis...">${esc(r.note||'')}</textarea></div><button class="btn btn-soft" data-action="save-rights">Save rights record</button><div class="fineprint" style="margin-top:10px">${r.confirmedAt?'Last documented: '+esc(fmtDate(r.confirmedAt)):'No clearance documented yet.'}</div></details><div class="field"><label>Published URL(s)</label><textarea data-clip-field="postedUrl" placeholder="One platform URL per line">${esc(c.postedUrl||'')}</textarea></div><div class="drawer-actions"><button class="btn btn-accent" data-action="advance-clip">Advance pipeline status</button><button class="btn btn-ghost" data-action="archive-clip">Archive</button></div><div class="fineprint" style="margin-top:15px">Status is saved after each change. Publication itself remains a manual action on the destination platform.</div><button class="btn btn-danger btn-sm" data-action="delete-clip">Delete clip record</button></section>
   <section class="clip-step production-section">${recordKit(c)}</section>
   </div><footer class="clip-step-footer"><span id="draftSaveState" class="fineprint" role="status">Drafts stay on this device</span><div class="clip-step-buttons"><button id="clipStepBack" class="btn btn-ghost" data-action="clip-step-back">Back</button><button id="clipStepNext" class="btn btn-accent" data-action="clip-step-next">Next →</button></div></footer>`;
@@ -966,6 +968,8 @@ document.addEventListener('click',async e=>{
     return;
   }
 
+ const coverClip=e.target.closest('[data-cover-clip]');
+ if(coverClip){openDrawer(coverClip.dataset.coverClip,2);return}
  const recordButton=e.target.closest('[data-record-clip]');
  if(recordButton){openDrawer(recordButton.dataset.recordClip,4);return}
  const packageButton=e.target.closest('[data-copy-package]');
@@ -1055,7 +1059,7 @@ document.addEventListener('click',async e=>{
    const c=findSelected();if(c)await makeThumbnailFromLink(c,$('#thumbnailSourceLink').value.trim());
    break;
  }
- case 'download-thumbnail':await exportCover(findSelected(),e.target.closest('[data-cover-export]')?.dataset.coverExport);break;
+ case 'download-thumbnail':await exportCover(findSelected(),$('#coverRatio').value);break;
  case 'share-thumbnail':{const c=findSelected();if(c)await exportCover(c,coverChoice(c).ratio||'wide',true);break}
  case 'cover-open':case 'cover-to-kit':{
    const c=findSelected();
@@ -1119,7 +1123,13 @@ document.addEventListener('change',e=>{const t=e.target;
    if(c){saveCoverChoice(c,t.id==='coverRatio'?{ratio:t.value}:{portrait:t.checked});paintThumbnail(c)}
    return;
  }
- if(e.target.id==='thumbnailVideo'&&e.target.files?.[0]&&findSelected()){fetchThumbnailFrame(findSelected(),URL.createObjectURL(e.target.files[0]),true);return;}
+ if(t.id==='coverMedia'&&t.files?.[0]&&findSelected()){
+   const file=t.files[0],c=findSelected();
+   if(file.type.startsWith('video/')||/\.(mov|mp4|webm|m4v)$/i.test(file.name))fetchThumbnailFrame(c,URL.createObjectURL(file),true);
+   else setThumbnailImage(t,c);
+   t.value='';
+   return;
+ }
  if(['thumbnailArtwork','thumbnailPortrait','coverComparison'].includes(e.target.id)&&e.target.type==='file'){setThumbnailImage(e.target,findSelected());return;}
  if(t.id==='statusFilter'){filterStatus=t.value;render();return}if(t.id==='sortFilter'){sortMode=t.value;render();return}
  if(t.id==='settingWindow'){state.settings.scanWindow=Number(t.value);changed();return}if(t.id==='settingMax'){state.settings.maxClips=Number(t.value);changed();return}if(t.id==='settingAuto'){state.settings.autoScan=t.value==='on';changed();return}
@@ -1132,7 +1142,12 @@ document.addEventListener('input',e=>{
  if(t.id==='coverPosition'){$('#coverTime').textContent=coverTime(Number(t.value));return}
  if(['coverCropX','coverCropY'].includes(t.id)){
    const c=findSelected();
-   if(c){saveCoverChoice(c,{[t.id==='coverCropX'?'x':'y']:Number(t.value)});paintThumbnail(c)}
+   if(c){
+     const choice=coverChoice(c),ratio=choice.ratio||'wide';
+     const focus={x:Number($('#coverCropX').value),y:Number($('#coverCropY').value)};
+     saveCoverChoice(c,{crops:{...choice.crops,[ratio]:focus}});
+     paintThumbnail(c);
+   }
    return;
  }
  const key=e.target.dataset.productionField;
@@ -1233,7 +1248,7 @@ function renderRecord(){
   const clips=state.clips.filter(c=>!['archived','published'].includes(c.status)&&(c.status!=='discovered'||c.production?.script?.trim()))
     .sort((a,b)=>Number(!!(b.production?.ready&&b.production?.script?.trim()))-Number(!!(a.production?.ready&&a.production?.script?.trim()))||score(b)-score(a));
   return pageTop('','Ready to Record','Open your script, filming notes, source and publishing packages from one place.')+
-    (clips.length?`<div class="r2-list">${clips.map(c=>`<article class="r2-section"><strong>${esc(c.title)}</strong><p class="fineprint">${esc(c.streamer)} · ${c.production?.ready&&c.production?.script?.trim()?'Ready to record':'Draft'}</p><button class="btn btn-soft" data-record-clip="${esc(c.id)}">Open recording kit</button></article>`).join('')}</div>`:empty('▶','No recording drafts','Shortlist a clip in Discovery to start.', 'nav-discovery','Open Discovery'));
+    (clips.length?`<div class="r2-list">${clips.map(c=>`<article class="r2-section"><strong>${esc(c.title)}</strong><p class="fineprint">${esc(c.streamer)} · ${c.production?.ready&&c.production?.script?.trim()?'Ready to record':'Draft'}</p><div class="r2-actions"><button class="btn btn-soft" data-record-clip="${esc(c.id)}">Open recording kit</button><button class="btn btn-ghost" data-cover-clip="${esc(c.id)}">Make a cover</button></div></article>`).join('')}</div>`:empty('▶','No recording drafts','Shortlist a clip in Discovery to start.', 'nav-discovery','Open Discovery'));
 }
 const resultMetrics=[
   ['views','Views'],['reach','Reach'],['retention','Average viewed (%)'],['shares','Shares'],

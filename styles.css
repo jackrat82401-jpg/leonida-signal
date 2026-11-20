@@ -464,3 +464,27 @@ body { font-size: 15px; }
   .cover-variants button { padding: 3px; min-height: 48px; }
   .cover-studio .drawer-actions .btn { min-height: 44px; }
 }
+
+/* Shared workspace spacing and mobile controls */
+#mainContent .page-top { align-items: center; margin-block-end: clamp(16px,2.5vw,32px); }
+#mainContent .page-top h1 { margin-block-start: 0; }
+#mainContent .page-top p { max-width: 64ch; }
+#mainContent :is(.r2-section,.setting-section) { box-shadow: none; }
+#mainContent .r2-list { display:grid; gap:10px; }
+#mainContent .r2-list > article { margin:0; }
+#nav .nav-link { min-height:44px; }
+#nav .nav-link[data-page=settings] { margin-block-start:8px; border-top:1px solid var(--stroke); }
+#appShell .top-actions .live-clock,#appShell .top-actions .header-dot { display:none; }
+.cover-studio .cover-picker { display:grid; gap:6px; font-weight:700; }
+.cover-studio .cover-picker input { font-weight:400; width:100%; border:1px solid var(--stroke); border-radius:8px; padding:8px; }
+.cover-studio .cover-picker input::file-selector-button { border:0; border-radius:5px; padding:8px 12px; cursor:pointer; }
+.cover-studio .cover-large-preview[data-ratio=vertical] { width:min(100%,250px); }
+.cover-studio .cover-options legend { margin-block-end:8px; }
+@media(max-width:620px){
+  #mainContent .page-top { align-items:start; gap:10px; }
+  #mainContent :is(.page-actions,.filterbar,.r2-actions) .btn,.clip-step-footer .btn { min-height:44px; }
+  #mainContent :is(.search-input,.select-input,input,select,textarea) { font-size:16px; }
+  #mainContent .workflow { scroll-snap-type:x proximity; }
+  #mainContent .workflow-col { scroll-snap-align:start; }
+  #drawerContent .cover-studio .drawer-actions { flex-wrap:wrap; }
+}
