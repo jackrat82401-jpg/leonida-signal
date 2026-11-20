@@ -232,6 +232,419 @@ function clipPitch(c) {
   if (scoreParts(c).velocity >= 20) return 'Early traction makes this worth a quick watch for a distinct moment.';
   return 'Watch for a moment that makes sense without the whole stream.';
 }
+const dailyVideoIdeas=[
+  [
+    "The scoreboard is lying",
+    "Show a ranked round where your best stat hid your worst decision."
+  ],
+  [
+    "Spinoza’s Court: Save-scumming",
+    "Defend and prosecute reloading a bad choice, then deliver your verdict."
+  ],
+  [
+    "Frame rate blind test",
+    "Record the same driving route twice with the counter hidden and ask which feels better."
+  ],
+  [
+    "The first-hour test",
+    "Replay a favorite game’s opening and identify the exact moment it earns your attention."
+  ],
+  [
+    "The teammate who was right",
+    "Use your own replay to show when the teammate you blamed actually called the right play."
+  ],
+  [
+    "When tutorials steal the joke",
+    "Compare discovering a mechanic yourself with being told about it in a pop-up."
+  ],
+  [
+    "The GTA speed-limit challenge",
+    "Drive legally in a GTA game you own and narrate how long your patience lasts."
+  ],
+  [
+    "A bad gun with one good job",
+    "Pick an unpopular weapon and show the one situation where you would buy it."
+  ],
+  [
+    "Can losing be good content?",
+    "Show a failed attempt and cut it around the moment your plan fell apart."
+  ],
+  [
+    "One button I wish I could unlearn",
+    "Demonstrate an input habit that helped in one game and hurt in another."
+  ],
+  [
+    "Spinoza’s Court: Camping",
+    "Recreate the same encounter from both players’ perspectives and rule on the complaint."
+  ],
+  [
+    "The map is teaching you",
+    "Point out three visual cues that lead you somewhere without a waypoint."
+  ],
+  [
+    "I coached my past self",
+    "Pause one old replay before each mistake and give yourself a five-word instruction."
+  ],
+  [
+    "The NPC with the worst shift",
+    "Follow a background character for a minute and narrate their imaginary performance review."
+  ],
+  [
+    "The lobby confidence test",
+    "Recall a confident prediction you made, then show how the match actually went."
+  ],
+  [
+    "One Battlegrounds turn, three futures",
+    "Freeze your shop and walk through a safe buy, a greedy buy, and a pivot."
+  ],
+  [
+    "When realism ruins the drive",
+    "Compare two driving games on a single corner and say which compromise you prefer."
+  ],
+  [
+    "The nicest thing a rival did",
+    "Tell a match story where an opponent earned your respect without saying a word."
+  ],
+  [
+    "What the killcam leaves out",
+    "Use your replay to trace the positioning mistake before the final shot."
+  ],
+  [
+    "Spinoza’s Court: Stream sniping accusations",
+    "Use a fictional match to show what evidence would change your verdict."
+  ],
+  [
+    "One room, one scare",
+    "Break down how sound, sightlines, and timing make a horror room work."
+  ],
+  [
+    "Why we keep queuing after a loss",
+    "Tell the story of a session where the next game became a negotiation with yourself."
+  ],
+  [
+    "Drive like the passenger is watching",
+    "Run the same route smoothly and recklessly, then compare the footage."
+  ],
+  [
+    "The teammate you actually want",
+    "List three behaviors that make someone worth queueing with and give a real example."
+  ],
+  [
+    "Best five seconds in a boring game",
+    "Find a small moment you loved in a game you otherwise bounced off."
+  ],
+  [
+    "What makes a clutch look easy?",
+    "Pause before your own clutch and show the information you already had."
+  ],
+  [
+    "Spinoza’s Court: Smurfing",
+    "Lay out the player’s excuse and the beginner’s experience before ruling."
+  ],
+  [
+    "The villain with a point",
+    "Pick a fictional villain’s strongest argument and identify where it breaks."
+  ],
+  [
+    "A $0 graphics upgrade",
+    "Change one visual setting and do a side-by-side on your own footage."
+  ],
+  [
+    "Your worst habit has a backstory",
+    "Name the game that trained a reflex you now have to fight."
+  ],
+  [
+    "The moment I stopped exploring",
+    "Compare a map covered in objectives with one area you explored out of curiosity."
+  ],
+  [
+    "A duo challenge with one shared brain",
+    "With ThaKhasper, assign one person navigation and the other decisions, then review the chaos."
+  ],
+  [
+    "The wrong way to teach a friend",
+    "Reenact a moment you gave too much advice and offer one better instruction."
+  ],
+  [
+    "The game that makes silence work",
+    "Replay a quiet passage and explain what the audio leaves you expecting."
+  ],
+  [
+    "Why loot feels personal",
+    "Open a loot drop you earned and explain why one item matters more than its stats."
+  ],
+  [
+    "Can you hear the rotation?",
+    "Play a short segment from your own match and let viewers guess the move from sound."
+  ],
+  [
+    "Spinoza’s Court: The quit button",
+    "Argue when leaving wastes everyone’s time and when staying does."
+  ],
+  [
+    "The GTA getaway with no shortcuts",
+    "Plan a clean escape in a GTA game you own and review the first bad turn."
+  ],
+  [
+    "The scoreboard needs one new stat",
+    "Pitch a metric for a useful action your favorite team game barely rewards."
+  ],
+  [
+    "What a good death teaches",
+    "Show one death that made you better and the next round where the lesson paid off."
+  ],
+  [
+    "When making a game easier makes it better",
+    "Change one setting and compare how it affects the part you care about."
+  ],
+  [
+    "Five words that fix a comm",
+    "Play or recreate a messy callout, then give the short version you needed."
+  ],
+  [
+    "The grind that stopped being fun",
+    "Tell the story of when a rank goal changed how you treated a game."
+  ],
+  [
+    "Spinoza’s Court: Backseating",
+    "Stage the same advice before and after a player asks for help."
+  ],
+  [
+    "The best bad plan",
+    "Show a failed duo idea that still made for a great night."
+  ],
+  [
+    "The difference between fast and rushed",
+    "Compare a clean movement sequence with one where you panic through it."
+  ],
+  [
+    "A leaderboard I would actually trust",
+    "Design a community leaderboard around a skill your game undervalues."
+  ],
+  [
+    "Why a near miss feels like a win",
+    "Replay a close call and ask why relief can feel better than success."
+  ],
+  [
+    "A car’s personality in one corner",
+    "Take two virtual cars through the same bend and describe the difference in plain English."
+  ],
+  [
+    "The map spot everybody abandons",
+    "Show how one neglected position can help when played for information."
+  ],
+  [
+    "Spinoza’s Court: Meta picks",
+    "Argue whether a friend owes the team a strong pick in ranked, then rule."
+  ],
+  [
+    "The settings placebo",
+    "Do the same practice drill twice with a friend secretly changing or keeping one setting."
+  ],
+  [
+    "The case for playing one more round",
+    "Tell one time another game helped and one time it made the night worse."
+  ],
+  [
+    "A tutorial for the thing nobody explains",
+    "Teach a Battlegrounds decision rule using one shop you can freeze on screen."
+  ],
+  [
+    "When a comeback starts",
+    "Show the tiny change in a match that made the comeback possible."
+  ],
+  [
+    "The trailer I wrote in my head",
+    "Compare what a first impression led you to expect with what you actually played."
+  ],
+  [
+    "How a game makes a city feel alive",
+    "Take a short walk in a GTA title you own and show three background details."
+  ],
+  [
+    "Spinoza’s Court: Spoilers",
+    "Set a statute of limitations for spoilers and defend it with two invented examples."
+  ],
+  [
+    "I gave up a good hand on purpose",
+    "Review a Battlegrounds pivot and explain what convinced you to abandon your board."
+  ],
+  [
+    "The cleanest play nobody clipped",
+    "Find a quiet support play in your footage and explain why it mattered."
+  ],
+  [
+    "The best mechanic in a game I dropped",
+    "Show one feature worth borrowing and describe where it would fit."
+  ],
+  [
+    "What happens if you play kindly?",
+    "Try a session focused on helpful comms and report one interaction that stood out."
+  ],
+  [
+    "The one thing I’d change about ranked",
+    "Pitch one rule, show who it helps, and name one way it could backfire."
+  ],
+  [
+    "Spinoza’s Court: Friendly fire",
+    "Recreate a mishap in a game and judge intent, recklessness, and actual damage."
+  ],
+  [
+    "A map with no minimap",
+    "Hide your map for a short drive and see which landmarks you remember."
+  ],
+  [
+    "The stream clip that needs ten seconds more",
+    "Use your own clip to show what context before the cut changes."
+  ],
+  [
+    "Teach me this game in 30 seconds",
+    "Swap teaching roles with ThaKhasper and each explain one mechanic under a timer."
+  ],
+  [
+    "Why expensive skins feel better",
+    "Try a blinded cosmetic comparison and separate feel from measurable performance."
+  ],
+  [
+    "The fake lesson I learned from a win",
+    "Show a match you won despite a bad decision and explain how you know."
+  ],
+  [
+    "How to make a boring challenge fun",
+    "Pick one repetitive task and add one rule that creates a decision."
+  ],
+  [
+    "Spinoza’s Court: Aim assist",
+    "Set up a fictional cross-input match and rule on what would make it fair."
+  ],
+  [
+    "When a soundtrack does all the work",
+    "Describe one scene’s mood and recreate the timing with your own audio."
+  ],
+  [
+    "What makes a clip worth reacting to?",
+    "Compare two of your own moments and choose the one you have something to say about."
+  ],
+  [
+    "How far would you follow a quest marker?",
+    "Ignore the marker for five minutes and report what you found along the way."
+  ],
+  [
+    "The first 30 seconds of being bad again",
+    "Start a game or mode you barely know and narrate your first useful discovery."
+  ],
+  [
+    "The decision before the highlight",
+    "Freeze just before your best play and ask viewers to pick your next move."
+  ],
+  [
+    "Spinoza’s Court: The rematch",
+    "Decide whether the loser gets another shot after a fluke and defend your ruling."
+  ],
+  [
+    "Why speedruns make games look weird",
+    "Try timing a familiar level and show which wholesome habit the timer kills first."
+  ],
+  [
+    "A teammate’s compliment I still remember",
+    "Tell the story and identify the behavior that made the compliment stick."
+  ],
+  [
+    "A game that understands consequences",
+    "Show a choice in your own playthrough and trace one consequence you felt later."
+  ],
+  [
+    "The reverse reaction",
+    "Open with your take, show the context from your footage, then revise your take on camera."
+  ],
+  [
+    "The best place to stop a clip",
+    "Cut your own moment at three different endings and explain what each version promises."
+  ],
+  [
+    "Can a bad map make good players?",
+    "Pick a map you dislike and show one skill it forced you to learn."
+  ],
+  [
+    "Spinoza’s Court: The ego peek",
+    "Act out the excuse and replay the angle to find out how guilty you were."
+  ],
+  [
+    "What makes a car game worth the wheel?",
+    "Run one corner with a controller and a wheel, then show what each teaches."
+  ],
+  [
+    "A moment a game made me feel small",
+    "Use one in-game vista or encounter and explain what scale did to your attention."
+  ],
+  [
+    "The funniest thing I took seriously",
+    "Revisit a low-stakes argument you had in a lobby and tell it deadpan."
+  ],
+  [
+    "The comeback that was already over",
+    "Analyze a losing match where the first signs of improvement came too late."
+  ],
+  [
+    "When the best move is boring",
+    "Demonstrate a safe Battlegrounds decision and explain the temptation you resisted."
+  ],
+  [
+    "What old games got right about downtime",
+    "Compare a quiet break in an older game with the pacing of one you play now."
+  ],
+  [
+    "Spinoza’s Court: The unstoppable combo",
+    "Decide whether the problem is the combo, the counterplay, or your refusal to learn it."
+  ],
+  [
+    "A ten-second story with no voiceover",
+    "Edit your footage into setup, turn, payoff and ask viewers what story they saw."
+  ],
+  [
+    "A city at two different speeds",
+    "Drive and walk the same virtual block, then show one detail you missed in the car."
+  ],
+  [
+    "The best advice I ignored for years",
+    "Give the gaming tip you dismissed and show the play that finally sold you on it."
+  ],
+  [
+    "When a stream turns into a hangout",
+    "Revisit a session where an ordinary moment with your duo beat the planned challenge."
+  ],
+  [
+    "What a game thinks winning means",
+    "Pick a victory condition and explain what it rewards players for caring about."
+  ],
+  [
+    "I tested my own hot take",
+    "Choose something you said earlier in the series and run a simple test against it."
+  ],
+  [
+    "Spinoza’s Court: Judge me",
+    "Retry the hardest challenge from this checklist and hand the verdict to viewers."
+  ],
+  [
+    "Three games, one question",
+    "Ask what makes losing feel fair and answer with a moment from three games you’ve played."
+  ],
+  [
+    "What I learned from making 100 videos",
+    "Show three ordinary moments from the series and explain what you’d make again."
+  ]
+];
+function renderDailyIdeas(){
+  const completed=new Set(Array.isArray(state.completedIdeaDays)?state.completedIdeaDays:[]);
+  const count=dailyVideoIdeas.filter((_,i)=>completed.has(i+1)).length;
+  const next=dailyVideoIdeas.findIndex((_,i)=>!completed.has(i+1))+1;
+  return `<h2>100-day video checklist</h2>
+    <p id="ideaProgress" role="status">${count} of 100 complete${next?' · Next up: Day '+next:''}</p>
+    <div class="r2-list">${dailyVideoIdeas.map(([title,beat],i)=>`<article class="r2-section">
+      <h3>Day ${i+1} · ${esc(title)}</h3><p>${esc(beat)}</p>
+      <label class="check-item"><input type="checkbox" data-idea-day="${i+1}" ${completed.has(i+1)?'checked':''}> Mark Day ${i+1} complete</label>
+    </article>`).join('')}</div>`;
+}
 function renderIdeas(){
   const standalone=[
     ['The scoreboard is lying to you','Ever had the best stats on the team and still been the reason you lost?','Tell one story from your own ranked games. Show the decision the scoreboard missed.'],
@@ -241,6 +654,7 @@ function renderIdeas(){
   const clips=state.clips.filter(c=>!['published','archived'].includes(c.status))
     .sort((a,b)=>score(b)-score(a)).slice(0,6);
   return pageTop('','Video Ideas','Pick a hook and decide what you want to say.')+
+    renderDailyIdeas()+
     '<h2>Record on your own</h2><div class="r2-list">'+standalone.map(([title,hook,beat])=>
       `<article class="r2-section"><h3>${esc(title)}</h3><p>“${esc(hook)}”</p><p>${esc(beat)}</p></article>`).join('')+'</div>'+
     '<h2>From your clip feed</h2><div class="r2-list">'+(clips.length?clips.map((c,i)=>{
@@ -1161,6 +1575,17 @@ document.addEventListener('submit',e=>{
  }
  if(e.target.getAttribute('id')==='clipForm'){e.preventDefault();addManualClip(e.target)}if(e.target.getAttribute('id')==='streamerForm'){e.preventDefault();upsertStreamer(e.target)}});
 document.addEventListener('change',e=>{const t=e.target;
+ if(t.matches('[data-idea-day]')){
+   const day=Number(t.dataset.ideaDay);
+   if(!Number.isInteger(day)||day<1||day>dailyVideoIdeas.length)return;
+   const completed=new Set(Array.isArray(state.completedIdeaDays)?state.completedIdeaDays:[]);
+   if(t.checked)completed.add(day);else completed.delete(day);
+   state.completedIdeaDays=[...completed];
+   persist();
+   const next=dailyVideoIdeas.findIndex((_,i)=>!completed.has(i+1))+1;
+   $('#ideaProgress').textContent=completed.size+' of 100 complete'+(next?' · Next up: Day '+next:'');
+   return;
+ }
  if(t.id==='coverPosition'){previewCoverTime(findSelected(),Number(t.value));return}
  if(t.id==='coverGuides'){
    const guides=$('.cover-guides');
