@@ -428,3 +428,39 @@ body { font-size: 15px; }
 
 .sidebar { overflow-y: auto; }
 .r2-section form .form-grid { row-gap: .75rem; }
+
+.cover-studio { display: grid; gap: 14px; }
+.cover-studio h4, .cover-studio p, .cover-studio fieldset { margin: 0; }
+.cover-source, .cover-variants { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.cover-studio label { display: block; min-width: 0; }
+.cover-studio input:not([type=checkbox]), .cover-studio select { max-width: 100%; }
+.cover-studio input[type=file] { display: block; width: 100%; margin-top: 5px; }
+.cover-studio input[type=url], .cover-studio input[type=range] { width: 100%; }
+.cover-filmstrip { display: flex; gap: 9px; overflow-x: auto; padding: 3px 2px 8px; }
+.cover-filmstrip:empty { display: none; }
+.cover-filmstrip button, .cover-variants button {
+  display: grid; gap: 5px; min-width: 0; align-content: start; padding: 5px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--stroke);
+  border-radius: 8px; font-size: .8rem;
+}
+.cover-filmstrip button { flex: 0 0 128px; }
+.cover-filmstrip button[aria-pressed=true], .cover-variants button[aria-pressed=true] {
+  border-color: #2547bd; box-shadow: inset 0 0 0 1px #2547bd;
+}
+.cover-filmstrip img, .cover-variants canvas { width: 100%; height: auto; display: block; border-radius: 4px; }
+.cover-options { min-width: 0; border: 0; padding: 0; }
+.cover-options legend { margin-bottom: 7px; font-weight: 700; }
+.cover-preview-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.cover-preview-tools .check-item { display: flex; }
+.cover-large-preview { position: relative; width: min(100%,640px); margin-inline: auto; }
+.cover-large-preview[data-ratio=vertical] { width: min(100%,320px); }
+.cover-large-preview canvas { display: block; width: 100%; height: auto; }
+.cover-guides { pointer-events: none; position: absolute; inset: 12% 14% 20% 8%; outline: 2px dashed #fff; box-shadow: 0 0 0 1px #111; }
+.cover-large-preview[data-ratio=wide] .cover-guides { inset: 0 34.18%; }
+#coverScrub canvas:not([hidden]) { display: block; width: min(100%,240px); height: auto; margin-block: 6px; }
+@media(max-width: 620px) {
+  .cover-source { grid-template-columns: minmax(0,1fr); }
+  .cover-studio input:not([type=file]), .cover-studio select { font-size: 16px; }
+  .cover-variants button { padding: 3px; min-height: 48px; }
+  .cover-studio .drawer-actions .btn { min-height: 44px; }
+}

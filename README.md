@@ -52,3 +52,11 @@ The uploader/clipper may differ from the broadcaster and does not automatically 
 - **Artwork.** Thumbnail B reports the usable image's dimensions. Direct browser-readable video and uploaded video files can supply sharper frames. The clip page URL remains the original source link. It may only provide a low-resolution preview.
 
 Run the local review build with `python -m http.server 8765` from the project root. The fixture feed works without Twitch credentials. Run the offline scanner tests with `python -m unittest discover -s scripts -v`.
+
+### Cover studio
+
+Open a clip's recording kit and choose **Make a cover**. Use a source preview, import a still, or pick a video from Photos or Files. A browser-readable video produces a filmstrip of distinct frames and a timestamp control for choosing a main or comparison frame. The recommended frame uses visual clarity and a modest late-clip preference for payoff angles. Twitch page links may only provide preview artwork.
+
+Choose **Spinoza leads**, **The moment leads**, or **Comparison leads**. Adjust the headline and crop, then save a 1280 × 720 widescreen PNG or a separately composed 1080 × 1920 vertical PNG. Comparison export requires two real source images. The share button uses native file sharing when available and falls back to a download.
+
+Cover artwork and timestamps are kept on the current browser with IndexedDB. Workspace JSON backups include both frame selections and the saved portrait. Performance logging accepts cover impressions and click-through rate where the platform provides them.
