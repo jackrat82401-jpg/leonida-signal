@@ -405,6 +405,7 @@ function coverTime(seconds){
 function thumbnailBuilder(c) {
   return `<section class="thumbnail-builder cover-studio" aria-labelledby="coverStudioTitle">
     <h4 id="coverStudioTitle">Cover studio</h4>
+    ${twitchClipSlug(c.url)?btn('fetch-clip-art','Get best image from this clip','accent'):''}
     <label class="cover-picker">Choose a photo or video<input id="coverMedia" type="file" accept="image/*,video/*,.mp4,.mov,.webm"></label>
     <details class="production-section"><summary>Use a source link</summary>
       <label for="thumbnailSourceLink">Direct video, image, or original clip URL</label>
@@ -463,14 +464,15 @@ const clipArtworkCache=new Map();
 function loadClipArtwork(source) {
   if(!source)return Promise.resolve(null);
   if(!clipArtworkCache.has(source)){
-    const original=loadThumbnailImage(source,true);
-    const versions=[original];
+    const versions=[loadThumbnailImage(source,true)];
     try{
       const url=new URL(source);
-      if(/(?:^|\.)twitch\.tv$/i.test(url.hostname)&&/-preview-\d+x\d+\.(?:jpg|jpeg|png)$/i.test(url.pathname)){
-        const path=url.pathname;
-        for(const size of ['1920x1080','1280x720']){
-          url.pathname=path.replace(/-preview-\d+x\d+(\.[^.]+)$/i,'-preview-'+size+'$1');
+      const twitchCdn=/(^|\.)(jtvnw\.net|twitchcdn\.net|twitch\.tv|ttvnw\.net)$/i.test(url.hostname);
+      const sizeSuffix=/-\d+x\d+(?=\.(?:jpe?g|png|webp)$)/i;
+      if(twitchCdn&&sizeSuffix.test(url.pathname)){
+        const originalPath=url.pathname;
+        for(const size of ['1920x1080','1280x720','854x480']){
+          url.pathname=originalPath.replace(sizeSuffix,'-'+size);
           if(url.href!==source)versions.push(loadThumbnailImage(url.href,true));
         }
       }
@@ -802,9 +804,38 @@ async function makeThumbnailFromLink(c,value) {
     toast('Open the clip that matches this Twitch link, then make its thumbnail.',true);
     return;
   }
-  if(slug||url.href===c.url){
-    applySuggestedHeadline(c);
-    await paintThumbnail(c);
+  if(slug){
+    const status=$('#thumbnailStatus');
+    const active=()=>findSelected()?.id===c.id&&status?.isConnected;
+    if(status)status.textContent='Checking Twitch image sizes…';
+    try{
+      let thumbnail=safeUrl(c.thumbnail);
+      if(!thumbnail){
+        const response=await fetch('./data/latest.json',{cache:'no-cache'});
+        if(response.ok){
+          const feed=await response.json();
+          thumbnail=safeUrl(feed.clips?.find(item=>item.id===slug)?.thumbnail_url);
+        }
+      }
+      if(!thumbnail)throw Error('This clip has no image in the discovery feed. Choose its saved video to extract a frame.');
+      clipArtworkCache.delete(thumbnail);
+      const image=await loadClipArtwork(thumbnail);
+      if(!image)throw Error('Twitch artwork could not be loaded. Choose the saved video to extract a frame.');
+      if(!active())return;
+      const width=image.naturalWidth,height=image.naturalHeight;
+      const old=(await getCoverAssets(c.id)).main;
+      if(!active())return;
+      if(old&&old.width*old.height>width*height){
+        status.textContent='Best available Twitch image is '+width+' × '+height+'. Your sharper saved frame is still selected.';
+        return;
+      }
+      const canvas=captureCoverImage(image,width,height,1920,1920);
+      const artwork=canvas.toDataURL('image/jpeg',.95);
+      releaseCoverVideo(c.id);
+      applySuggestedHeadline(c);
+      await setCoverAsset(c,'main',{image:artwork,kind:'Twitch image',width,height,clipUrl:c.url,mediaUrl:image.src});
+      if(active())toast('Selected Twitch image · '+width+' × '+height);
+    }catch(error){if(active())status.textContent=error.message}
     return;
   }
   if(/\.(png|jpe?g|webp|avif)$/i.test(url.pathname)){
@@ -1027,6 +1058,7 @@ document.addEventListener('click',async e=>{
    if(!Object.keys(missing).length){toast('This clip already has a draft. Edit it in Write.');break;}
    c.production={...existing,...missing,step:clipStep};changed('Brief drafted from clip metadata',c.title);break;
  }
+ case 'fetch-clip-art':{const c=findSelected();if(c)await makeThumbnailFromLink(c,c.url);break}
  case 'copy-thumbnail-link':{
    const c=findSelected(),input=$('#thumbnailSourceLink');
    if(!c||!input)break;
